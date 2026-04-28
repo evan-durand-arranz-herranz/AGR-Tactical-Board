@@ -1,0 +1,44 @@
+{
+  "name": "agr-tactical-board",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/evan-durand-arranz-herranz/AGR-Tactical-Board.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/evan-durand-arranz-herranz/AGR-Tactical-Board/issues"
+  },
+  "homepage": "https://github.com/evan-durand-arranz-herranz/AGR-Tactical-Board#readme",
+  "dependencies": {
+    "@vitejs/plugin-react": "^6.0.1",
+    "clsx": "^2.1.1",
+    "immer": "^11.1.4",
+    "lucide-react": "^1.11.0",
+    "react": "^18.3.1",
+    "react-dnd": "^16.0.1",
+    "react-dnd-html5-backend": "^16.0.1",
+    "react-dom": "^18.3.1",
+    "vite": "^8.0.10",
+    "zustand": "^5.0.12"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.4",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "autoprefixer": "^10.5.0",
+    "postcss": "^8.5.12",
+    "tailwindcss": "^4.2.4",
+    "typescript": "^6.0.3"
+  }
+}
