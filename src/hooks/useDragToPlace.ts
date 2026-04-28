@@ -49,9 +49,13 @@ export function useDragToPlace(
         e.clientY >= rect.top  && e.clientY <= rect.bottom
       if (!inside) return
 
-      const vb   = svg.viewBox.baseVal
-      const svgX = (e.clientX - rect.left) / rect.width  * vb.width  + vb.x
-      const svgY = (e.clientY - rect.top)  / rect.height * vb.height + vb.y
+      const pt   = svg.createSVGPoint()
+      pt.x = e.clientX; pt.y = e.clientY
+      const ctm  = svg.getScreenCTM()
+      if (!ctm) return
+      const sp   = pt.matrixTransform(ctm.inverse())
+      const svgX = sp.x
+      const svgY = sp.y
       const pos  = converterRef.current(svgX, svgY)
       if (!pos) return
 

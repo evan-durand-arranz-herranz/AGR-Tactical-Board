@@ -223,12 +223,13 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
     const clientToSVG = useCallback((clientX: number, clientY: number) => {
       const svg = svgEl.current
       if (!svg) return { svgX: 0, svgY: 0 }
-      const rect = svg.getBoundingClientRect()
-      const vb   = svg.viewBox.baseVal
-      return {
-        svgX: (clientX - rect.left) / rect.width  * vb.width  + vb.x,
-        svgY: (clientY - rect.top)  / rect.height * vb.height + vb.y,
-      }
+      const pt  = svg.createSVGPoint()
+      pt.x = clientX
+      pt.y = clientY
+      const ctm = svg.getScreenCTM()
+      if (!ctm) return { svgX: 0, svgY: 0 }
+      const p = pt.matrixTransform(ctm.inverse())
+      return { svgX: p.x, svgY: p.y }
     }, [svgEl])
 
     const svgToNorm = useCallback((svgX: number, svgY: number): Position => {
