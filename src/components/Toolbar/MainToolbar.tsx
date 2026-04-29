@@ -49,7 +49,7 @@ function AGRLogo() {
         <p className="text-white font-bold text-sm leading-tight" style={{ fontFamily: 'Rajdhani, sans-serif' }}>
           Tactical Board
         </p>
-        <p className="text-gray-500 text-xs leading-tight">v1.0</p>
+        <p className="text-gray-500 text-xs leading-tight">v1.7</p>
       </div>
     </div>
   )

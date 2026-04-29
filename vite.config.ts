@@ -32,7 +32,7 @@ export default defineConfig({
   build: {
     // WebView2 (Windows) = Chrome ≥ 105, WebKit (macOS) = Safari ≥ 15
     target: ['es2021', 'chrome105', 'safari15'],
-    minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
+    minify: !process.env.TAURI_ENV_DEBUG,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },
 })
