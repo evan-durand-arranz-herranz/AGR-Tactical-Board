@@ -67,18 +67,20 @@ export function useKeyboardShortcuts(
           break
         case 'Delete':
         case 'Backspace':
-          // Delete selected element
-          if (ui.selectedElementId && ui.selectedElementType === 'event' && ui.activeFrameId) {
+          if (ui.selectedPlayerIds.length > 0) {
+            tactical.batchRemovePlayersFromField(ui.selectedPlayerIds)
+            ui.clearSelectedPlayers()
+          } else if (ui.selectedElementId && ui.selectedElementType === 'event' && ui.activeFrameId) {
             tactical.removeEvent(ui.activeFrameId, ui.selectedElementId)
             ui.clearSelection()
           }
           break
         case 'Escape':
-          // Quitter le mode présentation si actif, sinon désélectionner
           if (ui.isPresentationMode) {
             ui.togglePresentationMode()
           } else {
             ui.clearSelection()
+            ui.clearSelectedPlayers()
           }
           break
         default: {

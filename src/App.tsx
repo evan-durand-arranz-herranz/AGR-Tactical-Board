@@ -8,6 +8,8 @@ import RugbyField, { fullSVGToNorm, halfSVGToNorm } from './components/Field/Rug
 import MainToolbar from './components/Toolbar/MainToolbar'
 import Timeline from './components/Timeline/Timeline'
 import PlayerPool from './components/Panels/PlayerPool'
+import LibraryPanel from './components/Panels/LibraryPanel'
+import ExportModal from './components/Modals/ExportModal'
 import type { Player, Position } from './types'
 
 // ─── Barre de frame + toggle vue ─────────────────────────────────────────────
@@ -96,7 +98,7 @@ export default function App() {
   const placePlayer = useTacticalStore(s => s.placePlayer)
   const placeBall   = useTacticalStore(s => s.placeBall)
 
-  const { activeFrameId, setActiveFrameId, isPresentationMode, fieldView } = useUIStore()
+  const { activeFrameId, setActiveFrameId, isPresentationMode, fieldView, isExportModalOpen, toggleExportModal } = useUIStore()
 
   const { startAnimation, stopAnimation } = useAnimation()
 
@@ -171,7 +173,7 @@ export default function App() {
 
   if (isPresentationMode) {
     return (
-      <div className="w-full h-full flex flex-col" style={{ background: '#0a0d14', overflow: 'hidden' }}>
+      <div className="w-full h-full flex flex-col" style={{ background: '#0a0d14', overflow: 'hidden', position: 'relative' }}>
         <FieldLayout presentationMode>
           {/* Pool aussi disponible en présentation */}
           <PlayerPool combo={combo} frame={activeFrame} onStartDrag={handlePoolDragStart} onStartBallDrag={handlePoolBallDragStart} />
@@ -195,6 +197,10 @@ export default function App() {
         </div>
 
         <GhostPlayer ghostRef={ghostRef} />
+        <LibraryPanel />
+        {isExportModalOpen && (
+          <ExportModal combo={combo} frames={frames} players={combo.players} onClose={toggleExportModal} />
+        )}
       </div>
     )
   }
@@ -202,7 +208,7 @@ export default function App() {
   // ── Mode normal ──────────────────────────────────────────────────────────
 
   return (
-    <div className="w-full h-full flex flex-col" style={{ background: '#0a0d14', overflow: 'hidden' }}>
+    <div className="w-full h-full flex flex-col" style={{ background: '#0a0d14', overflow: 'hidden', position: 'relative' }}>
       <MainToolbar />
       <FrameLabelBar label={activeFrame.label} index={activeIndex} total={frames.length} />
 
@@ -217,6 +223,10 @@ export default function App() {
       <Timeline onPlay={handlePlay} onPause={handlePause} onStop={handleStop} />
 
       <GhostPlayer ghostRef={ghostRef} />
+      <LibraryPanel />
+      {isExportModalOpen && (
+        <ExportModal combo={combo} frames={frames} players={combo.players} onClose={toggleExportModal} />
+      )}
     </div>
   )
 }

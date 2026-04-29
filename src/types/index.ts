@@ -49,6 +49,7 @@ export interface Frame {
   duration: number        // transition duration to next frame (ms)
   positions: Record<string, Position>              // playerId → position
   ballPosition?: Position                          // ballon indépendant
+  ballWaypoint?: Position                          // point de contrôle quadratique du ballon (coup de pied)
   waypoints?: Record<string, [Position, Position]> // 2 points de contrôle par joueur (1/3, 2/3)
   events: FieldEvent[]
 }
@@ -92,6 +93,7 @@ export interface UIState {
   activeFrameId: string | null
   selectedElementId: string | null  // player id or event id
   selectedElementType: 'player' | 'event' | null
+  selectedPlayerIds: string[]         // multi-selection rubber-band
   isPlaying: boolean
   playbackSpeed: 0.5 | 1 | 1.5 | 2
   playbackLoop: boolean
@@ -99,6 +101,7 @@ export interface UIState {
   panOffset: Position
   isLibraryOpen: boolean
   isFormationPickerOpen: boolean
+  isExportModalOpen: boolean
   isPresentationMode: boolean
   fieldView: FieldView
   livePositions: Record<string, Position> | null  // positions interpolées pendant l'animation

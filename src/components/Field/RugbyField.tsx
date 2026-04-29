@@ -163,6 +163,18 @@ type DragState =
       startSvgX: number; startSvgY: number
       origCx: number; origCy: number
       moved: boolean
+      ballEl: SVGGElement | null
+      origBallCx: number; origBallCy: number
+    }
+  | {
+      type: 'group'
+      playerIds: string[]
+      wrapperEls: Map<string, SVGGElement>
+      origPositions: Map<string, { svgCx: number; svgCy: number }>
+      startSvgX: number; startSvgY: number
+      moved: boolean
+      ballEl: SVGGElement | null
+      origBallCx: number; origBallCy: number
     }
   | {
       type: 'waypoint'
@@ -175,6 +187,16 @@ type DragState =
       wp0Cx: number; wp0Cy: number
       wp1Cx: number; wp1Cy: number
       wp0Norm: Position; wp1Norm: Position
+      startSvgX: number; startSvgY: number
+      origCx: number; origCy: number
+      moved: boolean
+    }
+  | {
+      type: 'ballwaypoint'
+      waypointEl: SVGCircleElement
+      pathEl: SVGPathElement | null
+      fromCx: number; fromCy: number
+      toCx: number; toCy: number
       startSvgX: number; startSvgY: number
       origCx: number; origCy: number
       moved: boolean
@@ -205,9 +227,13 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
 
     const {
       setPlayerPosition, _pushHistory, setWaypoints,
-      setBallPosition, removePlayerFromField, addEvent, removeEvent,
+      setBallPosition, setBallWaypoint, removePlayerFromField, addEvent, removeEvent,
     } = useTacticalStore()
-    const { isPlaying, setZoom, zoom, activeTool, livePositions, liveBallPosition } = useUIStore()
+    const {
+      isPlaying, setZoom, zoom, activeTool,
+      livePositions, liveBallPosition,
+      selectedPlayerIds,
+    } = useUIStore()
 
     const isHalf = fieldView === 'half'
 
@@ -236,14 +262,23 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
       return isHalf ? halfSVGToNorm(svgX, svgY) : fullSVGToNorm(svgX, svgY)
     }, [isHalf])
 
-    // ── Drag state (joueurs, waypoints, ballon) ────────────────────────────────
+    // ── Drag state ────────────────────────────────────────────────────────────
+    const dragState = useRef<DragState | null>(null)
 
-    const dragState    = useRef<DragState | null>(null)
+    // ── Rubber-band selection ─────────────────────────────────────────────────
+    const rubberBandRef     = useRef<{ startSvgX: number; startSvgY: number } | null>(null)
+    const rubberBandRectRef = useRef<SVGRectElement>(null)
 
-    // ── Arrow drawing state ────────────────────────────────────────────────────
-
-    const arrowDrawing = useRef<{ fromNorm: Position; fromSvgX: number; fromSvgY: number } | null>(null)
+    // ── Arrow drawing state ───────────────────────────────────────────────────
+    const arrowDrawing    = useRef<{ fromNorm: Position; fromSvgX: number; fromSvgY: number } | null>(null)
     const previewArrowRef = useRef<SVGLineElement>(null)
+
+    // Stable refs so closure-heavy callbacks can read current render values
+    const visiblePlayersRef = useRef<Player[]>([])
+    const normToSVGRef      = useRef(normToSVG)
+    const getPlayerPosRef   = useRef(getPlayerPos)
+    normToSVGRef.current    = normToSVG
+    getPlayerPosRef.current = getPlayerPos
 
     // ── onPointerDown ──────────────────────────────────────────────────────────
 
@@ -325,6 +360,27 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
         return
       }
 
+      // ── Waypoint du ballon (coup de pied) ─────────────────────────────────
+      const ballWpTarget = (e.target as Element).closest('[data-ball-waypoint]') as SVGCircleElement | null
+      if (ballWpTarget && prevFrame?.ballPosition && frame.ballPosition) {
+        const { cx: px, cy: py } = normToSVG(prevFrame.ballPosition)
+        const { cx: bx, cy: by } = normToSVG(frame.ballPosition)
+        const wpNorm = frame.ballWaypoint ?? {
+          x: (prevFrame.ballPosition.x + frame.ballPosition.x) / 2,
+          y: (prevFrame.ballPosition.y + frame.ballPosition.y) / 2,
+        }
+        const { cx: wpx, cy: wpy } = normToSVG(wpNorm)
+        const pathEl = svgEl.current?.querySelector('[data-ball-waypoint-path]') as SVGPathElement | null
+        dragState.current = {
+          type: 'ballwaypoint', waypointEl: ballWpTarget, pathEl,
+          fromCx: px, fromCy: py, toCx: bx, toCy: by,
+          startSvgX: svgX, startSvgY: svgY, origCx: wpx, origCy: wpy, moved: false,
+        }
+        ;(e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId)
+        e.stopPropagation()
+        return
+      }
+
       // ── Ballon ─────────────────────────────────────────────────────────────
       const ballTarget = (e.target as Element).closest('[data-ball-token]') as SVGGElement | null
       if (ballTarget && frame.ballPosition) {
@@ -339,36 +395,132 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
       }
 
       // ── Joueur ─────────────────────────────────────────────────────────────
-      const target = (e.target as Element).closest('[data-player-id]') as SVGElement | null
-      if (!target) return
-      const playerId = target.getAttribute('data-player-id')!
-      const wrapper = target.closest('[data-token-wrapper]') as SVGGElement | null
-      if (!wrapper) return
-      const currentPos = getPlayerPos(playerId) ?? { x: 50, y: 50 }
-      const { cx, cy } = normToSVG(currentPos)
-      dragState.current = {
-        type: 'player', playerId, wrapperEl: wrapper,
-        startSvgX: svgX, startSvgY: svgY, origCx: cx, origCy: cy, moved: false,
+      const playerHit = (e.target as Element).closest('[data-player-id]') as SVGElement | null
+      if (playerHit) {
+        const playerId = playerHit.getAttribute('data-player-id')!
+        const wrapper = playerHit.closest('[data-token-wrapper]') as SVGGElement | null
+        if (!wrapper) return
+
+        const currentSelectedIds = useUIStore.getState().selectedPlayerIds
+
+        if (currentSelectedIds.length > 1 && currentSelectedIds.includes(playerId)) {
+          // ── Déplacement groupé ───────────────────────────────────────────
+          const wrapperEls     = new Map<string, SVGGElement>()
+          const origPositions  = new Map<string, { svgCx: number; svgCy: number }>()
+          for (const pid of currentSelectedIds) {
+            const pos = getPlayerPosRef.current(pid)
+            if (!pos) continue
+            const wEl = svgEl.current?.querySelector(`[data-token-wrapper="${CSS.escape(pid)}"]`) as SVGGElement | null
+            if (!wEl) continue
+            const { cx, cy } = normToSVGRef.current(pos)
+            wrapperEls.set(pid, wEl)
+            origPositions.set(pid, { svgCx: cx, svgCy: cy })
+          }
+          let groupBallEl: SVGGElement | null = null
+          let gOrigBallCx = 0, gOrigBallCy = 0
+          if (frame.ballPosition) {
+            const { cx: bx, cy: by } = normToSVG(frame.ballPosition)
+            for (const pid of currentSelectedIds) {
+              const pos = getPlayerPosRef.current(pid)
+              if (!pos) continue
+              const { cx: px, cy: py } = normToSVGRef.current(pos)
+              if ((bx - px) ** 2 + (by - py) ** 2 < 28 * 28) {
+                groupBallEl = svgEl.current?.querySelector('[data-ball-token]') as SVGGElement ?? null
+                gOrigBallCx = bx; gOrigBallCy = by
+                break
+              }
+            }
+          }
+          dragState.current = {
+            type: 'group', playerIds: currentSelectedIds,
+            wrapperEls, origPositions,
+            startSvgX: svgX, startSvgY: svgY, moved: false,
+            ballEl: groupBallEl, origBallCx: gOrigBallCx, origBallCy: gOrigBallCy,
+          }
+        } else {
+          // ── Déplacement simple — on met à jour la sélection ──────────────
+          useUIStore.getState().setSelectedPlayerIds([playerId])
+          const currentPos = getPlayerPos(playerId) ?? { x: 50, y: 50 }
+          const { cx, cy } = normToSVG(currentPos)
+          let singleBallEl: SVGGElement | null = null
+          let sOrigBallCx = 0, sOrigBallCy = 0
+          if (frame.ballPosition) {
+            const { cx: bx, cy: by } = normToSVG(frame.ballPosition)
+            if ((bx - cx) ** 2 + (by - cy) ** 2 < 28 * 28) {
+              singleBallEl = svgEl.current?.querySelector('[data-ball-token]') as SVGGElement ?? null
+              sOrigBallCx = bx; sOrigBallCy = by
+            }
+          }
+          dragState.current = {
+            type: 'player', playerId, wrapperEl: wrapper,
+            startSvgX: svgX, startSvgY: svgY, origCx: cx, origCy: cy, moved: false,
+            ballEl: singleBallEl, origBallCx: sOrigBallCx, origBallCy: sOrigBallCy,
+          }
+        }
+
+        ;(e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId)
+        e.stopPropagation()
+        return
+      }
+
+      // ── Espace vide — rubber-band ──────────────────────────────────────────
+      useUIStore.getState().setSelectedPlayerIds([])
+      rubberBandRef.current = { startSvgX: svgX, startSvgY: svgY }
+      const rbEl = rubberBandRectRef.current
+      if (rbEl) {
+        rbEl.setAttribute('x', String(svgX))
+        rbEl.setAttribute('y', String(svgY))
+        rbEl.setAttribute('width', '0')
+        rbEl.setAttribute('height', '0')
+        rbEl.setAttribute('visibility', 'visible')
       }
       ;(e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId)
-      e.stopPropagation()
     }, [isPlaying, activeTool, clientToSVG, svgToNorm, frame, prevFrame, normToSVG,
-        setBallPosition, removePlayerFromField, removeEvent, _pushHistory, livePositions, svgEl])
+        setBallPosition, setBallWaypoint, removePlayerFromField, removeEvent, _pushHistory, livePositions, svgEl])
 
     // ── onPointerMove ──────────────────────────────────────────────────────────
 
     const onPointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
       const { svgX, svgY } = clientToSVG(e.clientX, e.clientY)
 
-      // Arrow drawing preview
+      // Arrow preview
       if (arrowDrawing.current) {
         previewArrowRef.current?.setAttribute('x2', String(svgX))
         previewArrowRef.current?.setAttribute('y2', String(svgY))
         return
       }
 
+      // Rubber-band update
+      if (rubberBandRef.current) {
+        const { startSvgX, startSvgY } = rubberBandRef.current
+        const x = Math.min(svgX, startSvgX)
+        const y = Math.min(svgY, startSvgY)
+        const w = Math.abs(svgX - startSvgX)
+        const h = Math.abs(svgY - startSvgY)
+        rubberBandRectRef.current?.setAttribute('x', String(x))
+        rubberBandRectRef.current?.setAttribute('y', String(y))
+        rubberBandRectRef.current?.setAttribute('width', String(w))
+        rubberBandRectRef.current?.setAttribute('height', String(h))
+        return
+      }
+
       const ds = dragState.current
       if (!ds) return
+
+      if (ds.type === 'group') {
+        const dx = svgX - ds.startSvgX
+        const dy = svgY - ds.startSvgY
+        for (const [pid, el] of ds.wrapperEls) {
+          const orig = ds.origPositions.get(pid)!
+          el.setAttribute('transform', `translate(${orig.svgCx + dx},${orig.svgCy + dy})`)
+        }
+        if (ds.ballEl) {
+          ds.ballEl.setAttribute('transform', `translate(${ds.origBallCx + dx},${ds.origBallCy + dy})`)
+        }
+        if (!ds.moved && (Math.abs(dx) > 1 || Math.abs(dy) > 1)) ds.moved = true
+        return
+      }
+
       const newCx = ds.origCx + (svgX - ds.startSvgX)
       const newCy = ds.origCy + (svgY - ds.startSvgY)
 
@@ -380,10 +532,17 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
         const w1Cx = ds.waypointIdx === 1 ? newCx : ds.wp1Cx
         const w1Cy = ds.waypointIdx === 1 ? newCy : ds.wp1Cy
         ds.pathEl?.setAttribute('d', `M ${ds.prevCx} ${ds.prevCy} L ${w0Cx} ${w0Cy} L ${w1Cx} ${w1Cy} L ${ds.currCx} ${ds.currCy}`)
+      } else if (ds.type === 'ballwaypoint') {
+        ds.waypointEl.setAttribute('cx', String(newCx))
+        ds.waypointEl.setAttribute('cy', String(newCy))
+        ds.pathEl?.setAttribute('d', `M ${ds.fromCx} ${ds.fromCy} Q ${newCx} ${newCy} ${ds.toCx} ${ds.toCy}`)
       } else if (ds.type === 'ball') {
         ds.ballEl.setAttribute('transform', `translate(${newCx},${newCy})`)
       } else {
         ds.wrapperEl.setAttribute('transform', `translate(${newCx},${newCy})`)
+        if (ds.ballEl) {
+          ds.ballEl.setAttribute('transform', `translate(${ds.origBallCx + newCx - ds.origCx},${ds.origBallCy + newCy - ds.origCy})`)
+        }
       }
 
       if (!ds.moved && (Math.abs(newCx - ds.origCx) > 1 || Math.abs(newCy - ds.origCy) > 1)) {
@@ -397,7 +556,7 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
       const { svgX, svgY } = clientToSVG(e.clientX, e.clientY)
       ;(e.currentTarget as SVGSVGElement).releasePointerCapture(e.pointerId)
 
-      // Arrow drawing commit
+      // Arrow commit
       if (arrowDrawing.current) {
         const { fromNorm, fromSvgX, fromSvgY } = arrowDrawing.current
         arrowDrawing.current = null
@@ -415,10 +574,43 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
         return
       }
 
+      // Rubber-band commit
+      if (rubberBandRef.current) {
+        const { startSvgX, startSvgY } = rubberBandRef.current
+        rubberBandRef.current = null
+        rubberBandRectRef.current?.setAttribute('visibility', 'hidden')
+
+        const minX = Math.min(svgX, startSvgX), maxX = Math.max(svgX, startSvgX)
+        const minY = Math.min(svgY, startSvgY), maxY = Math.max(svgY, startSvgY)
+
+        if (maxX - minX < 5 && maxY - minY < 5) return   // click sans drag → sélection déjà effacée
+
+        const inRect = visiblePlayersRef.current.filter(p => {
+          const pos = getPlayerPosRef.current(p.id)
+          if (!pos) return false
+          const { cx, cy } = normToSVGRef.current(pos)
+          return cx >= minX && cx <= maxX && cy >= minY && cy <= maxY
+        })
+        useUIStore.getState().setSelectedPlayerIds(inRect.map(p => p.id))
+        return
+      }
+
       const ds = dragState.current
       if (!ds) return
       dragState.current = null
       if (!ds.moved) return
+
+      if (ds.type === 'group') {
+        const dx = svgX - ds.startSvgX
+        const dy = svgY - ds.startSvgY
+        _pushHistory()
+        for (const pid of ds.playerIds) {
+          const orig = ds.origPositions.get(pid)
+          if (!orig) continue
+          setPlayerPosition(frame.id, pid, svgToNorm(orig.svgCx + dx, orig.svgCy + dy))
+        }
+        return
+      }
 
       const finalCx = ds.origCx + (svgX - ds.startSvgX)
       const finalCy = ds.origCy + (svgY - ds.startSvgY)
@@ -429,13 +621,15 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
           ? [newPos, ds.wp1Norm]
           : [ds.wp0Norm, newPos]
         setWaypoints(frame.id, ds.playerId, pair)
+      } else if (ds.type === 'ballwaypoint') {
+        setBallWaypoint(frame.id, newPos)
       } else if (ds.type === 'ball') {
         setBallPosition(frame.id, newPos)
       } else {
         _pushHistory()
         setPlayerPosition(frame.id, ds.playerId, newPos)
       }
-    }, [clientToSVG, svgToNorm, _pushHistory, setPlayerPosition, setWaypoints, setBallPosition, addEvent, frame.id])
+    }, [clientToSVG, svgToNorm, _pushHistory, setPlayerPosition, setWaypoints, setBallPosition, setBallWaypoint, addEvent, frame.id])
 
     const onWheel = useCallback((e: React.WheelEvent<SVGSVGElement>) => {
       e.preventDefault()
@@ -450,8 +644,25 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
       if (isHalf && pos.x > 53) return false
       return true
     })
+    visiblePlayersRef.current = visiblePlayers
 
-    // ── Ghost trails (2 waypoints, piecewise linear) ───────────────────────────
+    // ── Porteur du ballon (anneau orange) ──────────────────────────────────────
+
+    const effectiveBallPos = isPlaying ? liveBallPosition : (frame.ballPosition ?? null)
+    let ballCarrierPlayerId: string | null = null
+    if (effectiveBallPos) {
+      const { cx: bx, cy: by } = normToSVG(effectiveBallPos)
+      let minDist = 28   // SVG units — seuil de proximité (r_token=16 + r_ball≈14)
+      for (const p of visiblePlayers) {
+        const pos = getPlayerPos(p.id)
+        if (!pos) continue
+        const { cx, cy } = normToSVG(pos)
+        const d = Math.sqrt((cx - bx) ** 2 + (cy - by) ** 2)
+        if (d < minDist) { minDist = d; ballCarrierPlayerId = p.id }
+      }
+    }
+
+    // ── Ghost trails ───────────────────────────────────────────────────────────
 
     interface TrailInfo {
       playerId: string; number: number; isAGR: boolean
@@ -481,10 +692,13 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
       }
     }
 
-    // ── ViewBox ────────────────────────────────────────────────────────────────
+    // ── ViewBox & curseur ──────────────────────────────────────────────────────
 
     const viewBox = isHalf ? H.viewBox : '-130 -5 1270 720'
-    const fieldCursor = activeTool === 'erase' ? 'crosshair' : activeTool === 'arrow' ? 'crosshair' : 'default'
+    const fieldCursor = activeTool === 'erase' ? 'crosshair'
+      : activeTool === 'arrow' ? 'crosshair'
+      : activeTool === 'select' && selectedPlayerIds.length > 1 ? 'default'
+      : 'default'
 
     return (
       <svg
@@ -582,21 +796,37 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
           )
         })}
 
-        {/* ── Ghost ballon ──────────────────────────────────────────────────── */}
-        {prevFrame?.ballPosition && frame.ballPosition && !isPlaying && (() => {
-          const { cx: px, cy: py } = normToSVG(prevFrame.ballPosition)
-          const { cx: bx, cy: by } = normToSVG(frame.ballPosition)
-          const dSq = (bx - px) ** 2 + (by - py) ** 2
-          if (dSq < 25) return null
-          return (
-            <line x1={px} y1={py} x2={bx} y2={by}
-              stroke="#c8860a" strokeWidth={1.8} strokeDasharray="6 4" strokeOpacity={0.7} />
-          )
-        })()}
+        {/* ── Ghost ballon — remplacé par chemin quadratique + handle ci-dessous ── */}
 
-        {/* ── Ballon indépendant ───────────────────────────────────────────── */}
-        {(isPlaying ? liveBallPosition : frame.ballPosition) && (() => {
-          const effectiveBallPos = (isPlaying ? liveBallPosition : frame.ballPosition)!
+        {/* ── Joueurs placés — AVANT le ballon pour z-order ────────────────── */}
+        {visiblePlayers.map(player => {
+          const pos = getPlayerPos(player.id)!
+          const { cx, cy } = normToSVG(pos)
+          const isSelected  = selectedPlayerIds.includes(player.id)
+          const hasBall     = ballCarrierPlayerId === player.id
+          return (
+            <g
+              key={player.id}
+              data-token-wrapper={player.id}
+              transform={`translate(${cx},${cy})`}
+              style={{ cursor: activeTool === 'erase' ? 'not-allowed' : 'grab' }}
+            >
+              <PlayerToken player={player} cx={0} cy={0} />
+              {/* Anneau porteur de balle — orange, au-dessus du token */}
+              {hasBall && (
+                <circle cx={0} cy={0} r={21} fill="none" stroke="#f97316" strokeWidth={2.5} />
+              )}
+              {/* Anneau de sélection — pointillé blanc, encore au-dessus */}
+              {isSelected && (
+                <circle cx={0} cy={0} r={hasBall ? 26 : 22} fill="none"
+                  stroke="rgba(255,255,255,0.85)" strokeWidth={1.8} strokeDasharray="5 3" />
+              )}
+            </g>
+          )
+        })}
+
+        {/* ── Ballon — toujours par-dessus les joueurs ──────────────────────── */}
+        {effectiveBallPos && (() => {
           const { cx: bx, cy: by } = normToSVG(effectiveBallPos)
           return (
             <g
@@ -611,17 +841,48 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
           )
         })()}
 
-        {/* ── Joueurs placés ───────────────────────────────────────────────── */}
-        {visiblePlayers.map(player => {
-          const pos = getPlayerPos(player.id)!
-          const { cx, cy } = normToSVG(pos)
+        {/* ── Trajectoire du ballon + handle de courbure (après ballon pour z-order) ── */}
+        {prevFrame?.ballPosition && frame.ballPosition && !isPlaying && (() => {
+          const { cx: px, cy: py } = normToSVG(prevFrame.ballPosition)
+          const { cx: bx, cy: by } = normToSVG(frame.ballPosition)
+          const dSq = (bx - px) ** 2 + (by - py) ** 2
+          if (dSq < 25) return null
+          const wpNorm = frame.ballWaypoint ?? {
+            x: (prevFrame.ballPosition.x + frame.ballPosition.x) / 2,
+            y: (prevFrame.ballPosition.y + frame.ballPosition.y) / 2,
+          }
+          const { cx: wpx, cy: wpy } = normToSVG(wpNorm)
           return (
-            <g key={player.id} data-token-wrapper={player.id} transform={`translate(${cx},${cy})`}
-              style={{ cursor: activeTool === 'erase' ? 'not-allowed' : 'grab' }}>
-              <PlayerToken player={player} cx={0} cy={0} />
+            <g style={{ pointerEvents: activeTool === 'select' ? 'auto' : 'none' }}>
+              <ellipse cx={px} cy={py} rx={14} ry={9}
+                fill="#c8860a" fillOpacity={0.18} stroke="#c8860a" strokeWidth={1} strokeOpacity={0.35} />
+              <path
+                data-ball-waypoint-path="true"
+                d={`M ${px} ${py} Q ${wpx} ${wpy} ${bx} ${by}`}
+                fill="none" stroke="#c8860a" strokeWidth={1.8} strokeDasharray="6 4" strokeOpacity={0.7}
+                style={{ pointerEvents: 'none' }}
+              />
+              <circle
+                data-ball-waypoint="true"
+                cx={wpx} cy={wpy} r={6}
+                fill="rgba(200,134,10,0.9)" stroke="rgba(0,0,0,0.4)" strokeWidth={1.5}
+                style={{ cursor: 'grab' }}
+              />
             </g>
           )
-        })}
+        })()}
+
+        {/* ── Rubber-band de sélection ─────────────────────────────────────── */}
+        <rect
+          ref={rubberBandRectRef}
+          x={0} y={0} width={0} height={0}
+          fill="rgba(255,255,255,0.08)"
+          stroke="rgba(255,255,255,0.6)"
+          strokeWidth={1.2}
+          strokeDasharray="5 3"
+          visibility="hidden"
+          style={{ pointerEvents: 'none' }}
+        />
       </svg>
     )
   }

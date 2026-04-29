@@ -15,6 +15,20 @@ import type {
 import { createDefaultCombination } from '../utils/formations'
 import { useUIStore } from './uiStore'
 
+// ─── Persistence ──────────────────────────────────────────────────────────────
+
+const STORAGE_KEY = 'agr-tactical-v1'
+
+function loadFromStorage(): { library: Library; activeCombinationId: string | null } | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed?.library?.combinations) || parsed.library.combinations.length === 0) return null
+    return parsed as { library: Library; activeCombinationId: string | null }
+  } catch { return null }
+}
+
 // ─── History item ─────────────────────────────────────────────────────────────
 
 interface HistoryEntry {
@@ -66,10 +80,18 @@ interface TacticalState {
   placePlayer: (playerId: string, pos: Position) => void
   /** Retire un joueur du terrain (toutes les frames) — le remet dans le pool */
   removePlayerFromField: (playerId: string) => void
+  /** Retire plusieurs joueurs en un seul commit d'historique */
+  batchRemovePlayersFromField: (playerIds: string[]) => void
   /** Positionne le ballon sur une frame précise */
   setBallPosition: (frameId: string, pos: Position | null) => void
+  /** Point de contrôle de la trajectoire du ballon (coup de pied) */
+  setBallWaypoint: (frameId: string, pos: Position | null) => void
   /** Place le ballon sur la frame active + les frames suivantes */
   placeBall: (pos: Position) => void
+
+  // ── Formation ─────────────────────────────────────────────────────────────
+  /** Applique un set de positions d'un coup (une seule entrée d'historique) */
+  applyFormation: (frameId: string, positions: Record<string, Position>) => void
 
   // ── Events ────────────────────────────────────────────────────────────────
   addEvent: (frameId: string, event: Omit<FieldEvent, 'frameId'>) => void
@@ -100,14 +122,15 @@ function snapshot(state: TacticalState): HistoryEntry {
 export const useTacticalStore = create<TacticalState>()(
   subscribeWithSelector(
     immer((set, get) => {
-      const initial = createDefaultCombination()
+      const saved = loadFromStorage()
+      const defaultCombo = saved ? null : createDefaultCombination()
 
       return {
-        library: {
-          combinations: [initial],
+        library: saved?.library ?? {
+          combinations: [defaultCombo!],
           folders: [],
         },
-        activeCombinationId: initial.id,
+        activeCombinationId: saved?.activeCombinationId ?? defaultCombo?.id ?? null,
         past: [],
         future: [],
 
@@ -165,6 +188,7 @@ export const useTacticalStore = create<TacticalState>()(
 
         setActiveCombination: (id) => {
           set(s => { s.activeCombinationId = id })
+          useUIStore.getState().setActiveFrameId(null)
         },
 
         // ── Frames ───────────────────────────────────────────────────────────
@@ -257,7 +281,16 @@ export const useTacticalStore = create<TacticalState>()(
           set(s => {
             const c = s.library.combinations.find(x => x.id === s.activeCombinationId)
             const f = c?.frames.find(x => x.id === frameId)
-            if (f) f.positions[playerId] = pos
+            if (!f) return
+            const oldPos = f.positions[playerId]
+            if (oldPos && f.ballPosition) {
+              const dx = f.ballPosition.x - oldPos.x
+              const dy = f.ballPosition.y - oldPos.y
+              if (dx * dx + dy * dy < 16) {
+                f.ballPosition = { ...pos }
+              }
+            }
+            f.positions[playerId] = pos
           })
         },
 
@@ -277,6 +310,15 @@ export const useTacticalStore = create<TacticalState>()(
             const f = c?.frames.find(x => x.id === frameId)
             if (!f) return
             f.ballPosition = pos ?? undefined
+          })
+        },
+
+        setBallWaypoint: (frameId, pos) => {
+          set(s => {
+            const c = s.library.combinations.find(x => x.id === s.activeCombinationId)
+            const f = c?.frames.find(x => x.id === frameId)
+            if (!f) return
+            f.ballWaypoint = pos ?? undefined
           })
         },
 
@@ -322,6 +364,34 @@ export const useTacticalStore = create<TacticalState>()(
             for (const frame of c.frames) {
               delete frame.positions[playerId]
               delete frame.waypoints?.[playerId]
+            }
+          })
+        },
+
+        batchRemovePlayersFromField: (playerIds) => {
+          if (playerIds.length === 0) return
+          get()._pushHistory()
+          set(s => {
+            const c = s.library.combinations.find(x => x.id === s.activeCombinationId)
+            if (!c) return
+            for (const frame of c.frames) {
+              for (const pid of playerIds) {
+                delete frame.positions[pid]
+                delete frame.waypoints?.[pid]
+              }
+            }
+          })
+        },
+
+        // ── Formation ────────────────────────────────────────────────────────
+        applyFormation: (frameId, positions) => {
+          get()._pushHistory()
+          set(s => {
+            const c = s.library.combinations.find(x => x.id === s.activeCombinationId)
+            const f = c?.frames.find(x => x.id === frameId)
+            if (!f) return
+            for (const [pid, pos] of Object.entries(positions)) {
+              f.positions[pid] = { ...pos }
             }
           })
         },
@@ -401,3 +471,13 @@ export const useTacticalStore = create<TacticalState>()(
     })
   )
 )
+
+// Save to localStorage on every relevant state change
+useTacticalStore.subscribe((state) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      library: state.library,
+      activeCombinationId: state.activeCombinationId,
+    }))
+  } catch { /* quota exceeded or private browsing */ }
+})

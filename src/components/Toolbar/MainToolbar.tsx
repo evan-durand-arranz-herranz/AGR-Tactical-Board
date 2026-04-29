@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   MousePointer2, ArrowRight, Eraser, BookOpen, Maximize2,
-  RotateCcw, RotateCw,
+  RotateCcw, RotateCw, Download,
 } from 'lucide-react'
 import type { Tool } from '../../types'
 import { useUIStore } from '../../store/uiStore'
@@ -98,7 +98,7 @@ function CombinationTitle() {
 // ─── Main Toolbar ─────────────────────────────────────────────────────────────
 
 export default function MainToolbar() {
-  const { activeTool, setActiveTool, toggleLibrary, togglePresentationMode } = useUIStore()
+  const { activeTool, setActiveTool, toggleLibrary, togglePresentationMode, toggleExportModal } = useUIStore()
   const { undo, redo, past, future } = useTacticalStore()
 
   return (
@@ -159,6 +159,15 @@ export default function MainToolbar() {
           className="flex items-center gap-1.5 px-3 py-1.5 rounded text-gray-300 hover:text-white hover:bg-white/10 text-sm transition-colors"
         >
           <BookOpen size={15} /> <span className="text-xs">Bibliothèque</span>
+        </button>
+
+        {/* Export */}
+        <button
+          onClick={toggleExportModal}
+          title="Exporter (PDF / Vidéo)"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white text-sm transition-colors"
+        >
+          <Download size={15} /> <span className="text-xs">Exporter</span>
         </button>
 
         {/* Presentation mode */}

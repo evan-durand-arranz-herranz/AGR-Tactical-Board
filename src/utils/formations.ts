@@ -130,15 +130,6 @@ export function createDefaultCombination(name = 'Nouvelle combinaison'): Combina
     events: [],
   }
 
-  const frame2: Frame = {
-    id: crypto.randomUUID(),
-    order: 1,
-    label: 'Développement',
-    duration: 1500,
-    positions: { ...emptyPositions },
-    events: [],
-  }
-
   return {
     id: crypto.randomUUID(),
     name,
@@ -146,7 +137,7 @@ export function createDefaultCombination(name = 'Nouvelle combinaison'): Combina
     category: 'attack',
     tags: [],
     isFavorite: false,
-    frames: [frame1, frame2],
+    frames: [frame1],
     players,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),

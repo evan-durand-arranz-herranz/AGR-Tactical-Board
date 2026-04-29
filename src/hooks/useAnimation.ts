@@ -4,7 +4,11 @@ import { useTacticalStore } from '../store/tacticalStore'
 import { lerpPosition, easeInOut } from '../utils/fieldGeometry'
 import type { Frame, Position } from '../types'
 
-// Interpolation piecewise le long de prev → wp0 → wp1 → curr
+function quadBezier(p0: Position, p1: Position, p2: Position, t: number): Position {
+  const u = 1 - t
+  return { x: u * u * p0.x + 2 * u * t * p1.x + t * t * p2.x, y: u * u * p0.y + 2 * u * t * p1.y + t * t * p2.y }
+}
+
 function interpolateAlongPath(
   p0: Position, p1: Position, p2: Position, p3: Position,
   t: number,
@@ -45,87 +49,129 @@ export function useAnimation() {
     if (frames.length < 2) return
     stopAnimation()
 
-    const uiState = useUIStore.getState()
-    const speed = uiState.playbackSpeed
-    const loop  = uiState.playbackLoop
+    const { playbackSpeed: speed, playbackLoop: loop } = useUIStore.getState()
 
-    let currentFrameIdx = startFrameIdx
-    let transitionStart = -1
-    let transitionDuration = frames[currentFrameIdx].duration / speed
+    const startIdx = startFrameIdx
+    const endIdx   = frames.length - 1
 
-    // Snapshot positions, waypoints et position du ballon — jamais toucher au store pendant l'animation
-    const originalPositions: Record<string, Position>[] = frames.map(f => ({ ...f.positions }))
-    const originalWaypoints = frames.map(f =>
+    // Snapshot immutable data upfront — never read the store during the tick
+    const origPositions = frames.map(f => ({ ...f.positions }))
+    const origWaypoints = frames.map(f =>
       f.waypoints ? (JSON.parse(JSON.stringify(f.waypoints)) as Record<string, [Position, Position]>) : undefined
     )
-    const originalBallPositions: (Position | undefined)[] = frames.map(f =>
-      f.ballPosition ? { ...f.ballPosition } : undefined
-    )
+    const origBallPos = frames.map(f => f.ballPosition ? { ...f.ballPosition } : undefined)
+    const origBallWp  = frames.map(f => f.ballWaypoint  ? { ...f.ballWaypoint  } : undefined)
+
+    // Per-transition durations (ms) from startIdx to endIdx
+    const durations: number[] = []
+    for (let i = startIdx; i < endIdx; i++) durations.push(frames[i].duration / speed)
+    const totalDuration = durations.reduce((s, d) => s + d, 0)
+
+    // Cumulative time at the start of each transition
+    const cumTimes: number[] = [0]
+    for (const d of durations) cumTimes.push(cumTimes[cumTimes.length - 1] + d)
 
     useUIStore.getState().setIsPlaying(true)
-    useUIStore.getState().setActiveFrameId(frames[currentFrameIdx].id)
+    useUIStore.getState().setActiveFrameId(frames[startIdx].id)
+
+    let animStart  = -1
+    let lastTransIdx = 0
 
     const tick = (now: number) => {
-      if (transitionStart < 0) transitionStart = now
+      if (animStart < 0) animStart = now
 
-      const elapsed = now - transitionStart
-      const t = Math.min(elapsed / transitionDuration, 1)
-      const easedT = easeInOut(t)
+      // Global ease applied once — gives continuous velocity at intermediate frames
+      const rawT        = Math.min((now - animStart) / totalDuration, 1)
+      const easedMs     = easeInOut(rawT) * totalDuration
 
-      const toFrame = frames[currentFrameIdx + 1]
+      // Find which transition the eased time falls in
+      let transIdx = durations.length - 1
+      let localT   = 1
+      let rem      = Math.min(easedMs, totalDuration)
+      for (let i = 0; i < durations.length; i++) {
+        if (rem <= durations[i] || i === durations.length - 1) {
+          transIdx = i
+          localT   = durations[i] > 0 ? Math.min(rem / durations[i], 1) : 1
+          break
+        }
+        rem -= durations[i]
+      }
 
-      if (toFrame) {
-        const combo = useTacticalStore.getState().getActiveCombination()
-        if (combo) {
-          // Joueurs — suit la trajectoire avec waypoints si disponible
-          const newLive: Record<string, Position> = {}
-          const destWaypoints = originalWaypoints[currentFrameIdx + 1]
-          for (const player of combo.players) {
-            const fromPos = originalPositions[currentFrameIdx][player.id]
-            const toPos   = originalPositions[currentFrameIdx + 1]?.[player.id]
-            if (fromPos && toPos) {
-              const wps = destWaypoints?.[player.id]
-              newLive[player.id] = wps
-                ? interpolateAlongPath(fromPos, wps[0], wps[1], toPos, easedT)
-                : lerpPosition(fromPos, toPos, easedT)
-            } else if (fromPos) {
-              newLive[player.id] = fromPos
+      const frameIdx = startIdx + transIdx
+
+      // Advance the active-frame indicator when we cross a boundary
+      if (transIdx > lastTransIdx) {
+        lastTransIdx = transIdx
+        useUIStore.getState().setActiveFrameId(frames[frameIdx].id)
+      }
+
+      const combo = useTacticalStore.getState().getActiveCombination()
+      if (combo) {
+        const destWaypoints = origWaypoints[frameIdx + 1]
+
+        // ── Players ────────────────────────────────────────────────────────
+        const newLive: Record<string, Position> = {}
+        for (const player of combo.players) {
+          const fromPos = origPositions[frameIdx]?.[player.id]
+          const toPos   = origPositions[frameIdx + 1]?.[player.id]
+          if (fromPos && toPos) {
+            const wps = destWaypoints?.[player.id]
+            newLive[player.id] = wps
+              ? interpolateAlongPath(fromPos, wps[0], wps[1], toPos, localT)
+              : lerpPosition(fromPos, toPos, localT)
+          } else if (fromPos) {
+            newLive[player.id] = fromPos
+          }
+        }
+        useUIStore.getState().setLivePositions(newLive)
+
+        // ── Ball: own waypoint > carrier waypoints > linear ────────────────
+        const fromBall = origBallPos[frameIdx]
+        const toBall   = origBallPos[frameIdx + 1]
+        if (fromBall && toBall) {
+          const ballWp = origBallWp[frameIdx + 1]
+          if (ballWp) {
+            useUIStore.getState().setLiveBallPosition(quadBezier(fromBall, ballWp, toBall, localT))
+          } else {
+            let carrierId: string | null = null
+            let minDistSq = 16
+            for (const player of combo.players) {
+              const fp = origPositions[frameIdx][player.id]
+              if (!fp) continue
+              const dx = fromBall.x - fp.x, dy = fromBall.y - fp.y
+              const dsq = dx * dx + dy * dy
+              if (dsq < minDistSq) { minDistSq = dsq; carrierId = player.id }
+            }
+            const carrierWps  = carrierId ? destWaypoints?.[carrierId] : null
+            const fromCarrier = carrierId ? origPositions[frameIdx][carrierId] : null
+            const toCarrier   = carrierId ? origPositions[frameIdx + 1]?.[carrierId] : null
+            if (carrierWps && fromCarrier && toCarrier) {
+              const ip = interpolateAlongPath(fromCarrier, carrierWps[0], carrierWps[1], toCarrier, localT)
+              useUIStore.getState().setLiveBallPosition({
+                x: ip.x + (fromBall.x - fromCarrier.x),
+                y: ip.y + (fromBall.y - fromCarrier.y),
+              })
+            } else {
+              useUIStore.getState().setLiveBallPosition(lerpPosition(fromBall, toBall, localT))
             }
           }
-          useUIStore.getState().setLivePositions(newLive)
-
-          // Ballon — interpolation simple
-          const fromBall = originalBallPositions[currentFrameIdx]
-          const toBall   = originalBallPositions[currentFrameIdx + 1]
-          if (fromBall && toBall) {
-            useUIStore.getState().setLiveBallPosition(lerpPosition(fromBall, toBall, easedT))
-          } else {
-            useUIStore.getState().setLiveBallPosition(fromBall ?? null)
-          }
+        } else {
+          useUIStore.getState().setLiveBallPosition(fromBall ?? null)
         }
       }
 
-      if (t >= 1) {
-        const nextIdx = currentFrameIdx + 1
-        if (nextIdx >= frames.length - 1) {
-          if (loop) {
-            currentFrameIdx = 0
-            transitionStart = now
-            transitionDuration = frames[0].duration / speed
-            useUIStore.getState().setActiveFrameId(frames[0].id)
-          } else {
-            useUIStore.getState().setActiveFrameId(frames[frames.length - 1].id)
-            useUIStore.getState().setLivePositions(null)
-            useUIStore.getState().setLiveBallPosition(null)
-            rafRef.current = null
-            useUIStore.getState().setIsPlaying(false)
-            return
-          }
+      if (rawT >= 1) {
+        if (loop) {
+          animStart    = now
+          lastTransIdx = 0
+          useUIStore.getState().setActiveFrameId(frames[startIdx].id)
         } else {
-          currentFrameIdx = nextIdx
-          transitionStart = now
-          transitionDuration = frames[currentFrameIdx].duration / speed
-          useUIStore.getState().setActiveFrameId(frames[currentFrameIdx].id)
+          useUIStore.getState().setActiveFrameId(frames[endIdx].id)
+          useUIStore.getState().setLivePositions(null)
+          useUIStore.getState().setLiveBallPosition(null)
+          rafRef.current = null
+          useUIStore.getState().setIsPlaying(false)
+          return
         }
       }
 
