@@ -71,18 +71,19 @@ export function useKeyboardShortcuts(
           }
           break
         case 'Delete':
-        case 'Backspace':
-          if (ui.selectedPlayerIds.length > 0) {
-            tactical.batchRemovePlayersFromField(ui.selectedPlayerIds)
-            ui.clearSelectedPlayers()
-          } else if (ui.isBallSelected && ui.activeFrameId) {
-            tactical.setBallPosition(ui.activeFrameId, null)
-            ui.setBallSelected(false)
+        case 'Backspace': {
+          const hasPlayers = ui.selectedPlayerIds.length > 0
+          const hasBall = ui.isBallSelected && !!ui.activeFrameId
+          if (hasPlayers || hasBall) {
+            if (hasPlayers) tactical.batchRemovePlayersFromField(ui.selectedPlayerIds)
+            if (hasBall) tactical.setBallPosition(ui.activeFrameId!, null)
+            useUIStore.setState({ selectedPlayerIds: [], isBallSelected: false })
           } else if (ui.selectedElementId && ui.selectedElementType === 'event' && ui.activeFrameId) {
             tactical.removeEvent(ui.activeFrameId, ui.selectedElementId)
             ui.clearSelection()
           }
           break
+        }
         case 'Escape':
           if (ui.isPresentationMode) {
             ui.togglePresentationMode()

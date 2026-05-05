@@ -27,6 +27,9 @@ npm run tauri:dev    # Lance l'app desktop en mode dev (hot-reload)
 ```bash
 npm run build        # Build frontend uniquement (TypeScript check + Vite)
 npm run tauri:build  # Build desktop complet (macOS .dmg ou Windows .msi/.exe)
+
+# Bypass sécurité Apple (macos)
+xattr -cr /Applications/Tactical\ Board.app
 ```
 
 Les artefacts sont générés dans `src-tauri/target/release/bundle/`.

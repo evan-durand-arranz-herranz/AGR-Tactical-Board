@@ -273,6 +273,9 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
     // ── Drag state ────────────────────────────────────────────────────────────
     const dragState = useRef<DragState | null>(null)
 
+    // ── Double-clic manuel (PointerEvent.detail non fiable dans Tauri/WebKit) ──
+    const lastClickRef = useRef<{ playerId: string; time: number } | null>(null)
+
     // ── Rubber-band selection ─────────────────────────────────────────────────
     const rubberBandRef     = useRef<{ startSvgX: number; startSvgY: number } | null>(null)
     const rubberBandRectRef = useRef<SVGRectElement>(null)
@@ -407,12 +410,16 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
       if (playerHit) {
         const playerId = playerHit.getAttribute('data-player-id')!
 
-        // Double-clic → envoyer au banc
-        if (e.detail >= 2) {
+        // Double-clic → envoyer au banc (timer manuel car PointerEvent.detail est 0 dans Tauri/WebKit)
+        const now = performance.now()
+        const last = lastClickRef.current
+        if (last && last.playerId === playerId && now - last.time < 400) {
+          lastClickRef.current = null
           togglePlayerHidden(playerId)
           e.stopPropagation()
           return
         }
+        lastClickRef.current = { playerId, time: now }
 
         const wrapper = playerHit.closest('[data-token-wrapper]') as SVGGElement | null
         if (!wrapper) return
@@ -608,7 +615,15 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
           const { cx, cy } = normToSVGRef.current(pos)
           return cx >= minX && cx <= maxX && cy >= minY && cy <= maxY
         })
-        useUIStore.getState().setSelectedPlayerIds(inRect.map(p => p.id))
+
+        let ballInRect = false
+        if (frame.ballPosition) {
+          const { cx: bx, cy: by } = normToSVGRef.current(frame.ballPosition)
+          ballInRect = bx >= minX && bx <= maxX && by >= minY && by <= maxY
+        }
+
+        // Mise à jour atomique — évite que setSelectedPlayerIds et setBallSelected se s'annulent mutuellement
+        useUIStore.setState({ selectedPlayerIds: inRect.map(p => p.id), isBallSelected: ballInRect })
         return
       }
 
@@ -650,7 +665,7 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
         _pushHistory()
         setPlayerPosition(frame.id, ds.playerId, newPos)
       }
-    }, [clientToSVG, svgToNorm, _pushHistory, setPlayerPosition, setWaypoints, setBallPosition, setBallWaypoint, addEvent, setBallSelected, frame.id])
+    }, [clientToSVG, svgToNorm, _pushHistory, setPlayerPosition, setWaypoints, setBallPosition, setBallWaypoint, addEvent, setBallSelected, frame])
 
     const onWheel = useCallback((e: React.WheelEvent<SVGSVGElement>) => {
       e.preventDefault()
