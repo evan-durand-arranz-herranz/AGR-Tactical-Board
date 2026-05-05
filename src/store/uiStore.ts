@@ -8,6 +8,7 @@ interface UIActions {
   clearSelection: () => void
   setSelectedPlayerIds: (ids: string[]) => void
   clearSelectedPlayers: () => void
+  setBallSelected: (v: boolean) => void
   setIsPlaying: (v: boolean) => void
   setPlaybackSpeed: (v: UIState['playbackSpeed']) => void
   setPlaybackLoop: (v: boolean) => void
@@ -20,14 +21,17 @@ interface UIActions {
   setFieldView: (v: FieldView) => void
   setLivePositions: (v: Record<string, import('../types').Position> | null) => void
   setLiveBallPosition: (v: import('../types').Position | null) => void
+  setFileSaveState: (path: string, updatedAt: string, combinationId: string) => void
+  clearFileSaveState: () => void
 }
 
-export const useUIStore = create<UIState & UIActions>((set) => ({
+export const useUIStore = create<UIState & UIActions & { isBallSelected: boolean }>((set) => ({
   activeTool: 'select',
   activeFrameId: null,
   selectedElementId: null,
   selectedElementType: null,
   selectedPlayerIds: [],
+  isBallSelected: false,
   isPlaying: false,
   playbackSpeed: 1,
   playbackLoop: false,
@@ -40,13 +44,17 @@ export const useUIStore = create<UIState & UIActions>((set) => ({
   fieldView: 'full',
   livePositions: null,
   liveBallPosition: null,
+  currentFilePath: null,
+  lastSavedUpdatedAt: null,
+  lastSavedCombinationId: null,
 
-  setActiveTool: (tool) => set({ activeTool: tool, selectedElementId: null, selectedElementType: null, selectedPlayerIds: [] }),
+  setActiveTool: (tool) => set({ activeTool: tool, selectedElementId: null, selectedElementType: null, selectedPlayerIds: [], isBallSelected: false }),
   setActiveFrameId: (id) => set({ activeFrameId: id }),
-  selectElement: (id, type) => set({ selectedElementId: id, selectedElementType: type }),
-  clearSelection: () => set({ selectedElementId: null, selectedElementType: null }),
-  setSelectedPlayerIds: (ids) => set({ selectedPlayerIds: ids }),
-  clearSelectedPlayers: () => set({ selectedPlayerIds: [] }),
+  selectElement: (id, type) => set({ selectedElementId: id, selectedElementType: type, isBallSelected: false }),
+  clearSelection: () => set({ selectedElementId: null, selectedElementType: null, isBallSelected: false }),
+  setSelectedPlayerIds: (ids) => set({ selectedPlayerIds: ids, isBallSelected: false }),
+  clearSelectedPlayers: () => set({ selectedPlayerIds: [], isBallSelected: false }),
+  setBallSelected: (v) => set({ isBallSelected: v, selectedPlayerIds: [], selectedElementId: null, selectedElementType: null }),
   setIsPlaying: (v) => set({ isPlaying: v }),
   setPlaybackSpeed: (v) => set({ playbackSpeed: v }),
   setPlaybackLoop: (v) => set({ playbackLoop: v }),
@@ -59,4 +67,6 @@ export const useUIStore = create<UIState & UIActions>((set) => ({
   setFieldView: (v) => set({ fieldView: v }),
   setLivePositions: (v) => set({ livePositions: v }),
   setLiveBallPosition: (v) => set({ liveBallPosition: v }),
+  setFileSaveState: (path, updatedAt, combinationId) => set({ currentFilePath: path, lastSavedUpdatedAt: updatedAt, lastSavedCombinationId: combinationId }),
+  clearFileSaveState: () => set({ currentFilePath: null, lastSavedUpdatedAt: null, lastSavedCombinationId: null }),
 }))

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useUIStore } from '../store/uiStore'
 import { useTacticalStore } from '../store/tacticalStore'
+import { saveFile, saveFileAs } from '../utils/fileHelpers'
 import type { Tool } from '../types'
 
 const TOOL_KEYS: Record<string, Tool> = {
@@ -41,7 +42,11 @@ export function useKeyboardShortcuts(
             return
           case 's':
             e.preventDefault()
-            // Save is localStorage-backed in Phase 5; no-op for now
+            if (e.shiftKey) {
+              saveFileAs()
+            } else {
+              saveFile()
+            }
             return
         }
       }
@@ -70,6 +75,9 @@ export function useKeyboardShortcuts(
           if (ui.selectedPlayerIds.length > 0) {
             tactical.batchRemovePlayersFromField(ui.selectedPlayerIds)
             ui.clearSelectedPlayers()
+          } else if (ui.isBallSelected && ui.activeFrameId) {
+            tactical.setBallPosition(ui.activeFrameId, null)
+            ui.setBallSelected(false)
           } else if (ui.selectedElementId && ui.selectedElementType === 'event' && ui.activeFrameId) {
             tactical.removeEvent(ui.activeFrameId, ui.selectedElementId)
             ui.clearSelection()

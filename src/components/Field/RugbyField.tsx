@@ -1,6 +1,9 @@
 import React, { forwardRef, useRef, useCallback } from 'react'
 import { FIELD } from '../../types'
 import type { Frame, Player, FieldView, Position } from '../../types'
+
+// Référence stable pour éviter les re-renders infinis quand hiddenPlayerIds est undefined
+const EMPTY_HIDDEN: string[] = []
 import { clampPosition, fromSVG } from '../../utils/fieldGeometry'
 import { useTacticalStore } from '../../store/tacticalStore'
 import { useUIStore } from '../../store/uiStore'
@@ -228,11 +231,16 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
     const {
       setPlayerPosition, _pushHistory, setWaypoints,
       setBallPosition, setBallWaypoint, removePlayerFromField, addEvent, removeEvent,
+      togglePlayerHidden,
     } = useTacticalStore()
+    const hiddenPlayerIds = useTacticalStore(s => {
+      const c = s.library.combinations.find(x => x.id === s.activeCombinationId)
+      return c?.hiddenPlayerIds ?? EMPTY_HIDDEN
+    })
     const {
       isPlaying, setZoom, zoom, activeTool,
       livePositions, liveBallPosition,
-      selectedPlayerIds,
+      selectedPlayerIds, isBallSelected, setBallSelected,
     } = useUIStore()
 
     const isHalf = fieldView === 'half'
@@ -398,6 +406,14 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
       const playerHit = (e.target as Element).closest('[data-player-id]') as SVGElement | null
       if (playerHit) {
         const playerId = playerHit.getAttribute('data-player-id')!
+
+        // Double-clic → envoyer au banc
+        if (e.detail >= 2) {
+          togglePlayerHidden(playerId)
+          e.stopPropagation()
+          return
+        }
+
         const wrapper = playerHit.closest('[data-token-wrapper]') as SVGGElement | null
         if (!wrapper) return
 
@@ -476,7 +492,8 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
       }
       ;(e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId)
     }, [isPlaying, activeTool, clientToSVG, svgToNorm, frame, prevFrame, normToSVG,
-        setBallPosition, setBallWaypoint, removePlayerFromField, removeEvent, _pushHistory, livePositions, svgEl])
+        setBallPosition, setBallWaypoint, removePlayerFromField, removeEvent, _pushHistory,
+        livePositions, svgEl, togglePlayerHidden])
 
     // ── onPointerMove ──────────────────────────────────────────────────────────
 
@@ -598,7 +615,11 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
       const ds = dragState.current
       if (!ds) return
       dragState.current = null
-      if (!ds.moved) return
+
+      if (!ds.moved) {
+        if (ds.type === 'ball') setBallSelected(true)
+        return
+      }
 
       if (ds.type === 'group') {
         const dx = svgX - ds.startSvgX
@@ -629,7 +650,7 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
         _pushHistory()
         setPlayerPosition(frame.id, ds.playerId, newPos)
       }
-    }, [clientToSVG, svgToNorm, _pushHistory, setPlayerPosition, setWaypoints, setBallPosition, setBallWaypoint, addEvent, frame.id])
+    }, [clientToSVG, svgToNorm, _pushHistory, setPlayerPosition, setWaypoints, setBallPosition, setBallWaypoint, addEvent, setBallSelected, frame.id])
 
     const onWheel = useCallback((e: React.WheelEvent<SVGSVGElement>) => {
       e.preventDefault()
@@ -639,6 +660,7 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
     // ── Joueurs visibles ───────────────────────────────────────────────────────
 
     const visiblePlayers = players.filter(p => {
+      if (hiddenPlayerIds.includes(p.id)) return false
       const pos = getPlayerPos(p.id)
       if (!pos) return false
       if (isHalf && pos.x > 53) return false
@@ -837,6 +859,9 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
               <ellipse rx={14} ry={9} fill="#c8860a" stroke="#7c5410" strokeWidth={1.5} />
               <ellipse rx={5} ry={8} fill="none" stroke="#7c5410" strokeWidth={0.8} />
               <line x1={0} y1={-9} x2={0} y2={9} stroke="#7c5410" strokeWidth={0.8} />
+              {isBallSelected && activeTool === 'select' && !isPlaying && (
+                <ellipse rx={18} ry={13} fill="none" stroke="#facc15" strokeWidth={2} strokeDasharray="4 3" />
+              )}
             </g>
           )
         })()}

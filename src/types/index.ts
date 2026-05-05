@@ -66,7 +66,8 @@ export interface Combination {
   folderId?: string
   frames: Frame[]
   players: Player[]
-  backgroundImage?: string // base64 for match analysis overlay
+  hiddenPlayerIds?: string[]   // joueurs mis au banc (masqués sur le terrain)
+  backgroundImage?: string
   createdAt: string
   updatedAt: string
 }
@@ -106,6 +107,10 @@ export interface UIState {
   fieldView: FieldView
   livePositions: Record<string, Position> | null  // positions interpolées pendant l'animation
   liveBallPosition: Position | null               // position du ballon interpolée pendant l'animation
+  // File save state
+  currentFilePath: string | null
+  lastSavedUpdatedAt: string | null
+  lastSavedCombinationId: string | null
 }
 
 // ─── Field geometry constants (SVG viewport) ─────────────────────────────────

@@ -2,29 +2,31 @@ import type { Combination, Frame, Team, Player } from '../../types'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Retourne les joueurs encore dans le pool (pas encore placés sur le terrain) */
+/** Retourne les joueurs encore dans le pool (pas placés ET pas au banc) */
 export function getPoolPlayers(combo: Combination, frame: Frame, team: Team): Player[] {
+  const hidden = combo.hiddenPlayerIds ?? []
   return combo.players
-    .filter(p => p.team === team && frame.positions[p.id] === undefined)
+    .filter(p => p.team === team && frame.positions[p.id] === undefined && !hidden.includes(p.id))
     .sort((a, b) => a.number - b.number)
 }
 
-// ─── Pool circle (un seul cercle par équipe) ───────────────────────────────────
+// ─── Pool circle ──────────────────────────────────────────────────────────────
 
 interface PoolCircleProps {
   team: Team
   nextPlayer: Player | null
-  onPointerDown: (player: Player, e: React.PointerEvent<HTMLDivElement>) => void
   remaining: number
+  onPointerDown: (player: Player, e: React.PointerEvent<HTMLDivElement>) => void
+  onBench: (player: Player) => void
 }
 
-function PoolCircle({ team, nextPlayer, onPointerDown, remaining }: PoolCircleProps) {
+function PoolCircle({ team, nextPlayer, remaining, onPointerDown, onBench }: PoolCircleProps) {
   const isAGR = team === 'AGR'
 
-  const bg      = isAGR ? '#dc2626' : '#f0f0f0'
-  const border  = isAGR ? '#991b1b' : '#444444'
-  const numCol  = isAGR ? '#ffffff' : '#111111'
-  const label   = isAGR ? 'AGR'     : 'ADV'
+  const bg       = isAGR ? '#dc2626' : '#f0f0f0'
+  const border   = isAGR ? '#991b1b' : '#444444'
+  const numCol   = isAGR ? '#ffffff' : '#111111'
+  const label    = isAGR ? 'AGR'     : 'ADV'
   const labelCol = isAGR ? '#dc2626' : '#9ca3af'
 
   if (!nextPlayer) {
@@ -52,18 +54,17 @@ function PoolCircle({ team, nextPlayer, onPointerDown, remaining }: PoolCirclePr
         {label}
       </p>
 
-      {/* Le cercle draggable */}
+      {/* Cercle : drag → place sur terrain, clic → banc */}
       <div
+        title={`Glisser pour placer · Clic pour mettre au banc`}
         onPointerDown={e => onPointerDown(nextPlayer, e)}
+        onClick={() => onBench(nextPlayer)}
         style={{
           width: 36, height: 36, borderRadius: '50%',
           background: bg,
           border: `2px solid ${border}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'grab',
-          boxShadow: isAGR
-            ? '0 0 0 0 rgba(220,38,38,0)'
-            : '0 0 0 0 rgba(255,255,255,0)',
           transition: 'transform 0.1s ease, box-shadow 0.1s ease',
           userSelect: 'none',
           touchAction: 'none',
@@ -80,18 +81,13 @@ function PoolCircle({ team, nextPlayer, onPointerDown, remaining }: PoolCirclePr
         }}
       >
         <span style={{
-          color: numCol,
-          fontSize: 14,
-          fontWeight: 700,
-          fontFamily: 'Rajdhani, sans-serif',
-          lineHeight: 1,
-          userSelect: 'none',
+          color: numCol, fontSize: 14, fontWeight: 700,
+          fontFamily: 'Rajdhani, sans-serif', lineHeight: 1, userSelect: 'none',
         }}>
           {nextPlayer.number}
         </span>
       </div>
 
-      {/* Compteur restants */}
       <p style={{ fontSize: '10px', color: '#6b7280', fontFamily: 'Inter' }}>
         {remaining} restant{remaining > 1 ? 's' : ''}
       </p>
@@ -126,16 +122,17 @@ function BallToken({ onPointerDown }: { onPointerDown: (e: React.PointerEvent<HT
   )
 }
 
-// ─── PlayerPool (panneau latéral) ─────────────────────────────────────────────
+// ─── PlayerPool ───────────────────────────────────────────────────────────────
 
 interface PlayerPoolProps {
   combo: Combination
   frame: Frame
   onStartDrag: (player: Player, e: React.PointerEvent<HTMLDivElement>) => void
   onStartBallDrag: (e: React.PointerEvent<HTMLDivElement>) => void
+  onBench: (player: Player) => void
 }
 
-export default function PlayerPool({ combo, frame, onStartDrag, onStartBallDrag }: PlayerPoolProps) {
+export default function PlayerPool({ combo, frame, onStartDrag, onStartBallDrag, onBench }: PlayerPoolProps) {
   const agrPool = getPoolPlayers(combo, frame, 'AGR')
   const oppPool = getPoolPlayers(combo, frame, 'opponent')
 
@@ -152,7 +149,6 @@ export default function PlayerPool({ combo, frame, onStartDrag, onStartBallDrag 
       flexShrink: 0,
       overflowY: 'auto',
     }}>
-      {/* Titre */}
       <p style={{
         writingMode: 'vertical-rl',
         transform: 'rotate(180deg)',
@@ -166,27 +162,26 @@ export default function PlayerPool({ combo, frame, onStartDrag, onStartBallDrag 
         JOUEURS
       </p>
 
-      {/* AGR pool */}
       <PoolCircle
         team="AGR"
         nextPlayer={agrPool[0] ?? null}
         remaining={agrPool.length}
         onPointerDown={onStartDrag}
+        onBench={onBench}
       />
 
       <div style={{ width: 32, height: 1, background: 'rgba(255,255,255,0.06)' }} />
 
-      {/* Adversaire pool */}
       <PoolCircle
         team="opponent"
         nextPlayer={oppPool[0] ?? null}
         remaining={oppPool.length}
         onPointerDown={onStartDrag}
+        onBench={onBench}
       />
 
       <div style={{ width: 32, height: 1, background: 'rgba(255,255,255,0.06)' }} />
 
-      {/* Ballon */}
       <BallToken onPointerDown={onStartBallDrag} />
     </div>
   )

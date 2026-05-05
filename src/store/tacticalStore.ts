@@ -82,6 +82,8 @@ interface TacticalState {
   removePlayerFromField: (playerId: string) => void
   /** Retire plusieurs joueurs en un seul commit d'historique */
   batchRemovePlayersFromField: (playerIds: string[]) => void
+  /** Bascule la visibilité d'un joueur (banc ↔ terrain) */
+  togglePlayerHidden: (playerId: string) => void
   /** Positionne le ballon sur une frame précise */
   setBallPosition: (frameId: string, pos: Position | null) => void
   /** Point de contrôle de la trajectoire du ballon (coup de pied) */
@@ -101,6 +103,9 @@ interface TacticalState {
   // ── Folders ───────────────────────────────────────────────────────────────
   createFolder: (name: string, parentId?: string) => void
   deleteFolder: (id: string) => void
+
+  // ── Import from file ──────────────────────────────────────────────────────
+  importCombination: (combo: Combination) => void
 
   // ── History ───────────────────────────────────────────────────────────────
   undo: () => void
@@ -383,6 +388,17 @@ export const useTacticalStore = create<TacticalState>()(
           })
         },
 
+        togglePlayerHidden: (playerId) => {
+          set(s => {
+            const c = s.library.combinations.find(x => x.id === s.activeCombinationId)
+            if (!c) return
+            if (!c.hiddenPlayerIds) c.hiddenPlayerIds = []
+            const idx = c.hiddenPlayerIds.indexOf(playerId)
+            if (idx >= 0) c.hiddenPlayerIds.splice(idx, 1)
+            else c.hiddenPlayerIds.push(playerId)
+          })
+        },
+
         // ── Formation ────────────────────────────────────────────────────────
         applyFormation: (frameId, positions) => {
           get()._pushHistory()
@@ -431,6 +447,22 @@ export const useTacticalStore = create<TacticalState>()(
         },
         deleteFolder: (id) => {
           set(s => { s.library.folders = s.library.folders.filter(f => f.id !== id) })
+        },
+
+        // ── Import from file ─────────────────────────────────────────────────
+        importCombination: (combo) => {
+          get()._pushHistory()
+          set(s => {
+            const existingIdx = s.library.combinations.findIndex(c => c.id === combo.id)
+            const copy: Combination = JSON.parse(JSON.stringify(combo))
+            if (existingIdx >= 0) {
+              s.library.combinations[existingIdx] = copy
+            } else {
+              s.library.combinations.push(copy)
+            }
+            s.activeCombinationId = combo.id
+          })
+          useUIStore.getState().setActiveFrameId(null)
         },
 
         // ── History ──────────────────────────────────────────────────────────

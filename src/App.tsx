@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useRef } from 'react'
 import { useTacticalStore } from './store/tacticalStore'
 import { useUIStore } from './store/uiStore'
+import type { Combination } from './types'
 import { useAnimation } from './hooks/useAnimation'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useDragToPlace } from './hooks/useDragToPlace'
@@ -50,6 +51,39 @@ function FrameLabelBar({ label, index, total }: { label: string; index: number; 
   )
 }
 
+// ─── Banc des joueurs cachés ──────────────────────────────────────────────────
+
+function BenchStrip({ combo }: { combo: Combination }) {
+  const togglePlayerHidden = useTacticalStore(s => s.togglePlayerHidden)
+  const hiddenPlayers = combo.players.filter(p => combo.hiddenPlayerIds?.includes(p.id))
+
+  if (hiddenPlayers.length === 0) return null
+
+  return (
+    <div
+      className="flex items-center gap-2 px-4 py-1.5 border-t border-white/5 flex-shrink-0"
+      style={{ background: '#0d101a' }}
+    >
+      <span className="text-xs text-gray-600 mr-1 flex-shrink-0">Banc :</span>
+      {hiddenPlayers.map(p => (
+        <button
+          key={p.id}
+          onClick={() => togglePlayerHidden(p.id)}
+          title={`Remettre le ${p.number} sur le terrain`}
+          className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border transition-all hover:scale-110 ${
+            p.team === 'AGR'
+              ? 'bg-red-950/60 border-red-700/50 text-red-400 hover:bg-red-600 hover:text-white hover:border-red-500'
+              : 'bg-white/5 border-white/15 text-gray-500 hover:bg-white/20 hover:text-white'
+          }`}
+          style={{ fontFamily: 'Rajdhani, sans-serif' }}
+        >
+          {p.number}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // ─── Ghost player ─────────────────────────────────────────────────────────────
 
 function GhostPlayer({ ghostRef }: { ghostRef: React.RefObject<HTMLDivElement | null> }) {
@@ -94,9 +128,10 @@ function FieldLayout({
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const combo       = useTacticalStore(s => s.getActiveCombination())
-  const placePlayer = useTacticalStore(s => s.placePlayer)
-  const placeBall   = useTacticalStore(s => s.placeBall)
+  const combo              = useTacticalStore(s => s.getActiveCombination())
+  const placePlayer        = useTacticalStore(s => s.placePlayer)
+  const placeBall          = useTacticalStore(s => s.placeBall)
+  const togglePlayerHidden = useTacticalStore(s => s.togglePlayerHidden)
 
   const { activeFrameId, setActiveFrameId, isPresentationMode, fieldView, isExportModalOpen, toggleExportModal } = useUIStore()
 
@@ -131,6 +166,10 @@ export default function App() {
     e.preventDefault()
     startBallDrag(e.clientX, e.clientY)
   }, [startBallDrag])
+
+  const handleBenchFromPool = useCallback((player: import('./types').Player) => {
+    togglePlayerHidden(player.id)
+  }, [togglePlayerHidden])
 
   // Frame initiale
   useEffect(() => {
@@ -176,10 +215,13 @@ export default function App() {
       <div className="w-full h-full flex flex-col" style={{ background: '#0a0d14', overflow: 'hidden', position: 'relative' }}>
         <FieldLayout presentationMode>
           {/* Pool aussi disponible en présentation */}
-          <PlayerPool combo={combo} frame={activeFrame} onStartDrag={handlePoolDragStart} onStartBallDrag={handlePoolBallDragStart} />
+          <PlayerPool combo={combo} frame={activeFrame} onStartDrag={handlePoolDragStart} onStartBallDrag={handlePoolBallDragStart} onBench={handleBenchFromPool} />
 
-          <div className="flex-1 overflow-hidden flex items-center justify-center p-3">
-            <RugbyField ref={svgRef} frame={activeFrame} prevFrame={prevFrame} players={combo.players} fieldView={fieldView} />
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <div className="flex-1 overflow-hidden flex items-center justify-center p-3">
+              <RugbyField ref={svgRef} frame={activeFrame} prevFrame={prevFrame} players={combo.players} fieldView={fieldView} />
+            </div>
+            <BenchStrip combo={combo} />
           </div>
         </FieldLayout>
 
@@ -213,10 +255,13 @@ export default function App() {
       <FrameLabelBar label={activeFrame.label} index={activeIndex} total={frames.length} />
 
       <FieldLayout>
-        <PlayerPool combo={combo} frame={activeFrame} onStartDrag={handlePoolDragStart} onStartBallDrag={handlePoolBallDragStart} />
+        <PlayerPool combo={combo} frame={activeFrame} onStartDrag={handlePoolDragStart} onStartBallDrag={handlePoolBallDragStart} onBench={handleBenchFromPool} />
 
-        <div className="flex-1 overflow-hidden flex items-center justify-center p-3">
-          <RugbyField ref={svgRef} frame={activeFrame} prevFrame={prevFrame} players={combo.players} fieldView={fieldView} />
+        <div className="flex-1 overflow-hidden flex flex-col">
+          <div className="flex-1 overflow-hidden flex items-center justify-center p-3">
+            <RugbyField ref={svgRef} frame={activeFrame} prevFrame={prevFrame} players={combo.players} fieldView={fieldView} />
+          </div>
+          <BenchStrip combo={combo} />
         </div>
       </FieldLayout>
 

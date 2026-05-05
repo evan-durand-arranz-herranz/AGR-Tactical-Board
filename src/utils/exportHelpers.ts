@@ -19,6 +19,7 @@ export async function exportVideo(
   combo: Combination,
   speed = 1,
   onProgress?: (progress: number) => void,
+  fieldView: 'full' | 'half' = 'full',
 ): Promise<void> {
   if (frames.length < 2) throw new Error('At least 2 frames required for video export')
 
@@ -33,12 +34,18 @@ export async function exportVideo(
   const totalMs = sortedFrames.slice(0, -1).reduce((s, f) => s + f.duration / speed, 0)
 
   // VP9/WebM prioritaire (Windows + Linux), MP4/H.264 fallback (macOS WebKit)
+  const CANDIDATES = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm',
+                      'video/mp4;codecs=avc1', 'video/mp4']
   const mimeType = (
-    ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm',
-     'video/mp4;codecs=avc1', 'video/mp4']
-      .find(t => MediaRecorder.isTypeSupported(t))
+    typeof MediaRecorder !== 'undefined'
+      ? CANDIDATES.find(t => MediaRecorder.isTypeSupported(t))
+      : undefined
   ) ?? 'video/webm'
   const fileExt = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm'
+
+  if (typeof MediaRecorder === 'undefined') throw new Error('MediaRecorder non supporté dans ce navigateur.')
+  if (typeof (canvas as HTMLCanvasElement & { captureStream?: () => MediaStream }).captureStream !== 'function')
+    throw new Error('canvas.captureStream non supporté dans ce navigateur.')
 
   const stream   = canvas.captureStream(60)
   const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 16_000_000 })
@@ -58,14 +65,14 @@ export async function exportVideo(
           sortedFrames[i + 1],
           players,
           easeInOut(Math.min(raw, 1)),
-          { comboName: combo.name },
+          { comboName: combo.name, fieldView },
         )
         return
       }
       cumulative += dur
     }
     renderFrameToCanvas(ctx, sortedFrames[sortedFrames.length - 1], players, {
-      label: sortedFrames[sortedFrames.length - 1].label, comboName: combo.name,
+      label: sortedFrames[sortedFrames.length - 1].label, comboName: combo.name, fieldView,
     })
   }
 
@@ -86,7 +93,7 @@ export async function exportVideo(
     recorder.onerror = reject
 
     renderAtTime(0)
-    recorder.start(100)   // collect data every 100 ms for finer chunks
+    recorder.start(100)
 
     const FPS     = 60
     const tickMs  = 1000 / FPS

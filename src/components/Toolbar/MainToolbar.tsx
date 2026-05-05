@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import {
   MousePointer2, ArrowRight, Eraser, BookOpen, Maximize2,
-  RotateCcw, RotateCw, Download,
+  RotateCcw, RotateCw, Download, FolderOpen, Save, SaveAll,
 } from 'lucide-react'
 import type { Tool } from '../../types'
 import { useUIStore } from '../../store/uiStore'
 import { useTacticalStore } from '../../store/tacticalStore'
+import { saveFile, saveFileAs, openFile } from '../../utils/fileHelpers'
 
 const TOOLS: Array<{ id: Tool; icon: React.ElementType; label: string; shortcut?: string }> = [
   { id: 'select', icon: MousePointer2, label: 'Sélection', shortcut: 'V' },
@@ -49,7 +50,7 @@ function AGRLogo() {
         <p className="text-white font-bold text-sm leading-tight" style={{ fontFamily: 'Rajdhani, sans-serif' }}>
           Tactical Board
         </p>
-        <p className="text-gray-500 text-xs leading-tight">v1.7</p>
+        <p className="text-gray-500 text-xs leading-tight">v1.8</p>
       </div>
     </div>
   )
@@ -60,10 +61,13 @@ function AGRLogo() {
 function CombinationTitle() {
   const combo = useTacticalStore(s => s.getActiveCombination())
   const updateMeta = useTacticalStore(s => s.updateCombinationMeta)
+  const { lastSavedCombinationId, lastSavedUpdatedAt } = useUIStore()
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState('')
 
   if (!combo) return null
+
+  const isDirty = lastSavedCombinationId === combo.id && lastSavedUpdatedAt !== combo.updatedAt
 
   if (editing) {
     return (
@@ -85,13 +89,67 @@ function CombinationTitle() {
   }
 
   return (
-    <button
-      onClick={() => { setVal(combo.name); setEditing(true) }}
-      className="text-white font-semibold text-sm hover:text-red-400 transition-colors"
-      style={{ fontFamily: 'Rajdhani, sans-serif', letterSpacing: '0.02em' }}
-    >
-      {combo.name}
-    </button>
+    <div className="flex items-center gap-1.5">
+      <button
+        onClick={() => { setVal(combo.name); setEditing(true) }}
+        className="text-white font-semibold text-sm hover:text-red-400 transition-colors"
+        style={{ fontFamily: 'Rajdhani, sans-serif', letterSpacing: '0.02em' }}
+      >
+        {combo.name}
+      </button>
+      {isDirty && (
+        <span className="w-1.5 h-1.5 rounded-full bg-orange-400 flex-shrink-0" title="Modifications non sauvegardées" />
+      )}
+    </div>
+  )
+}
+
+// ─── File actions ─────────────────────────────────────────────────────────────
+
+function FileActions() {
+  const combo = useTacticalStore(s => s.getActiveCombination())
+  const { currentFilePath, lastSavedCombinationId, lastSavedUpdatedAt } = useUIStore()
+
+  if (!combo) return null
+
+  const hasFile = !!currentFilePath && lastSavedCombinationId === combo.id
+  const isDirty = hasFile && lastSavedUpdatedAt !== combo.updatedAt
+
+  return (
+    <div className="flex items-center gap-1">
+      {/* Ouvrir */}
+      <button
+        onClick={openFile}
+        title="Ouvrir un fichier .agr"
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-gray-400 hover:text-white hover:bg-white/10 text-xs transition-colors"
+      >
+        <FolderOpen size={14} />
+        <span>Ouvrir</span>
+      </button>
+
+      {/* Sauvegarder */}
+      <button
+        onClick={saveFile}
+        title={hasFile ? 'Sauvegarder (Ctrl+S)' : 'Sauvegarder sous… (Ctrl+S)'}
+        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs transition-colors ${
+          isDirty
+            ? 'bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 hover:text-orange-200'
+            : 'text-gray-400 hover:text-white hover:bg-white/10'
+        }`}
+      >
+        <Save size={14} />
+        <span>Sauvegarder</span>
+      </button>
+
+      {/* Sauvegarder sous */}
+      <button
+        onClick={saveFileAs}
+        title="Sauvegarder sous… (Ctrl+Shift+S)"
+        className="p-1.5 rounded text-gray-500 hover:text-white hover:bg-white/10 transition-colors"
+      >
+        <SaveAll size={13} />
+      </button>
+    </div>
   )
 }
 
@@ -109,8 +167,13 @@ export default function MainToolbar() {
       {/* Logo */}
       <AGRLogo />
 
-      {/* Combination title */}
+      {/* Combination title + dirty dot */}
       <CombinationTitle />
+
+      {/* File actions */}
+      <div className="border-l border-white/10 pl-3">
+        <FileActions />
+      </div>
 
       {/* Spacer */}
       <div className="flex-1" />

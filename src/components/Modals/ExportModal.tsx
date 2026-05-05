@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { X, Video, Download, Loader2 } from 'lucide-react'
 import type { Combination, Frame, Player } from '../../types'
+import { useUIStore } from '../../store/uiStore'
 
 interface ExportModalProps {
   combo: Combination
@@ -15,6 +16,12 @@ export default function ExportModal({ combo, frames, players, onClose }: ExportM
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
+  const fieldView = useUIStore(s => s.fieldView)
+
+  // Exclure les joueurs au banc de l'export
+  const visiblePlayers = players.filter(p => !(combo.hiddenPlayerIds ?? []).includes(p.id))
+  const benchCount = players.length - visiblePlayers.length
+
   const sortedFrames = [...frames].sort((a, b) => a.order - b.order)
   const totalMs = sortedFrames.slice(0, -1).reduce((s, f) => s + f.duration / speed, 0)
   const videoSecs = (totalMs / 1000).toFixed(1)
@@ -25,15 +32,15 @@ export default function ExportModal({ combo, frames, players, onClose }: ExportM
     setProgress(0)
     try {
       const { exportVideo } = await import('../../utils/exportHelpers')
-      await exportVideo(sortedFrames, players, combo, speed, p => setProgress(p))
+      await exportVideo(sortedFrames, visiblePlayers, combo, speed, p => setProgress(p), fieldView)
       onClose()
     } catch (err) {
       console.error(err)
-      setError("Une erreur est survenue lors de l'export.")
+      setError(err instanceof Error ? err.message : String(err))
     } finally {
       setLoading(false)
     }
-  }, [speed, sortedFrames, players, combo, onClose])
+  }, [speed, sortedFrames, visiblePlayers, combo, onClose, fieldView])
 
   return (
     <div
@@ -81,9 +88,13 @@ export default function ExportModal({ combo, frames, players, onClose }: ExportM
               ))}
             </div>
           </div>
+          <Row label="Vue" value={fieldView === 'half' ? 'Demi-terrain' : 'Terrain complet'} />
           <Row label="Format" value="Vidéo 1080p (1920 × 1080)" />
           <Row label="Qualité" value="16 Mbps / 60 fps" />
           <Row label="Durée" value={`~${videoSecs}s`} />
+          {benchCount > 0 && (
+            <Row label="Au banc" value={`${benchCount} joueur${benchCount > 1 ? 's' : ''} exclu${benchCount > 1 ? 's' : ''}`} />
+          )}
         </div>
 
         {/* Progress bar */}
