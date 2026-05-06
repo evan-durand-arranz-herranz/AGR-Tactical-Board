@@ -7,6 +7,7 @@ import type { Tool } from '../types'
 const TOOL_KEYS: Record<string, Tool> = {
   v: 'select',
   a: 'arrow',
+  z: 'zone',
   e: 'erase',
 }
 
@@ -72,13 +73,31 @@ export function useKeyboardShortcuts(
           break
         case 'Delete':
         case 'Backspace': {
-          const hasPlayers = ui.selectedPlayerIds.length > 0
-          const hasBall = ui.isBallSelected && !!ui.activeFrameId
-          if (hasPlayers || hasBall) {
-            if (hasPlayers) tactical.batchRemovePlayersFromField(ui.selectedPlayerIds)
-            if (hasBall) tactical.setBallPosition(ui.activeFrameId!, null)
-            useUIStore.setState({ selectedPlayerIds: [], isBallSelected: false })
-          } else if (ui.selectedElementId && ui.selectedElementType === 'event' && ui.activeFrameId) {
+          if (!ui.activeFrameId) break
+          const activeFrame = frames[activeIdx]
+          if (!activeFrame) break
+
+          const zoneEventIds = new Set(activeFrame.events.filter(ev => ev.type === 'zone').map(ev => ev.id))
+
+          const selectedZoneIds = ui.selectedEntityIds.filter(id => zoneEventIds.has(id))
+          const selectedPlayerIds = ui.selectedEntityIds.filter(id => !zoneEventIds.has(id))
+          const hasBall = ui.isBallSelected
+
+          if (selectedZoneIds.length > 0) {
+            for (const zoneId of selectedZoneIds) {
+              tactical.removeEvent(ui.activeFrameId, zoneId)
+            }
+          }
+          if (selectedPlayerIds.length > 0) {
+            tactical.batchRemovePlayersFromField(selectedPlayerIds)
+          }
+          if (hasBall) {
+            tactical.setBallPosition(ui.activeFrameId, null)
+          }
+
+          if (selectedZoneIds.length > 0 || selectedPlayerIds.length > 0 || hasBall) {
+            useUIStore.setState({ selectedEntityIds: [], isBallSelected: false })
+          } else if (ui.selectedElementId && ui.selectedElementType === 'event') {
             tactical.removeEvent(ui.activeFrameId, ui.selectedElementId)
             ui.clearSelection()
           }
@@ -89,7 +108,7 @@ export function useKeyboardShortcuts(
             ui.togglePresentationMode()
           } else {
             ui.clearSelection()
-            ui.clearSelectedPlayers()
+            ui.clearSelectedEntities()
           }
           break
         default: {

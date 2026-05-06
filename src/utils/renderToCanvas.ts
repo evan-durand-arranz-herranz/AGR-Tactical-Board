@@ -1,5 +1,6 @@
 import type { Frame, Player, Position } from '../types'
 import { easeInOut } from './fieldGeometry'
+import { canvasArcPath } from './shapeAnalysis'
 
 export const EXPORT_W = 1920
 export const EXPORT_H = 1080
@@ -46,6 +47,53 @@ function normToHalfSVG(pos: Position) {
 
 function ln(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number) {
   ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
+}
+
+const FILL_OPACITY = 0.15
+
+function drawZones(
+  ctx: CanvasRenderingContext2D,
+  events: Frame['events'],
+  toSVG: (pos: import('../types').Position) => { x: number; y: number }
+) {
+  for (const ev of events) {
+    if (ev.type !== 'zone') continue
+    const color = ev.color || '#3b82f6'
+    ctx.save()
+    ctx.setLineDash([])
+
+    if (ev.shapeType === 'line' && ev.from && ev.to) {
+      const f = toSVG(ev.from), t = toSVG(ev.to)
+      ctx.globalAlpha = 0.85; ctx.strokeStyle = color; ctx.lineWidth = 4
+      ctx.lineCap = 'round'; ln(ctx, f.x, f.y, t.x, t.y)
+    } else if (ev.shapeType === 'arc' && ev.normPoints?.length === 3) {
+      const [p0, pm, p1] = ev.normPoints.map(p => toSVG(p))
+      ctx.beginPath()
+      canvasArcPath(ctx, p0, pm, p1)
+      ctx.globalAlpha = 0.85; ctx.strokeStyle = color; ctx.lineWidth = 4
+      ctx.lineCap = 'round'; ctx.stroke()
+    } else if (ev.shapeType === 'path' && ev.normPoints && ev.normPoints.length >= 2) {
+      const pts = ev.normPoints.map(p => toSVG(p))
+      ctx.beginPath()
+      ctx.moveTo(pts[0].x, pts[0].y)
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y)
+      ctx.globalAlpha = 0.85; ctx.strokeStyle = color; ctx.lineWidth = 4
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke()
+    } else if (ev.from && ev.to) {
+      const f = toSVG(ev.from), t = toSVG(ev.to)
+      const x1 = Math.min(f.x, t.x), y1 = Math.min(f.y, t.y)
+      const bw = Math.abs(t.x - f.x), bh = Math.abs(t.y - f.y)
+      if (ev.shapeType === 'rect') {
+        ctx.globalAlpha = FILL_OPACITY; ctx.fillStyle = color; ctx.fillRect(x1, y1, bw, bh)
+        ctx.globalAlpha = 0.75; ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.strokeRect(x1, y1, bw, bh)
+      } else {
+        ctx.globalAlpha = FILL_OPACITY; ctx.fillStyle = color
+        ctx.beginPath(); ctx.ellipse((f.x + t.x) / 2, (f.y + t.y) / 2, bw / 2, bh / 2, 0, 0, Math.PI * 2); ctx.fill()
+        ctx.globalAlpha = 0.75; ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke()
+      }
+    }
+    ctx.restore()
+  }
 }
 
 function drawHalfFieldLines(ctx: CanvasRenderingContext2D) {
@@ -115,8 +163,10 @@ export function renderFrameToCanvas(
 
     const toSVG = normToHalfSVG
 
+    drawZones(ctx, frame.events, toSVG)
+
     for (const ev of frame.events) {
-      if (!ev.from || !ev.to) continue
+      if (ev.type === 'zone' || !ev.from || !ev.to) continue
       const { x: fx, y: fy } = toSVG(ev.from)
       const { x: tx, y: ty } = toSVG(ev.to)
       const angle = Math.atan2(ty - fy, tx - fx)
@@ -199,8 +249,10 @@ export function renderFrameToCanvas(
     ln(ctx, F.rightTry,       F.mid - ph, F.rightTry + 42, F.mid - ph)
     ln(ctx, F.rightTry,       F.mid + ph, F.rightTry + 42, F.mid + ph)
 
+    drawZones(ctx, frame.events, normToSVG)
+
     for (const ev of frame.events) {
-      if (!ev.from || !ev.to) continue
+      if (ev.type === 'zone' || !ev.from || !ev.to) continue
       const { x: fx, y: fy } = normToSVG(ev.from)
       const { x: tx, y: ty } = normToSVG(ev.to)
       const angle = Math.atan2(ty - fy, tx - fx)

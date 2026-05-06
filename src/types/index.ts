@@ -4,7 +4,7 @@ export type Team = 'AGR' | 'opponent'
 export type Phase = 'scrum' | 'lineout' | 'kickoff' | 'open' | 'defense'
 export type Category = 'attack' | 'defense' | 'kick' | 'set_piece'
 export type EventType = 'pass' | 'run' | 'ruck' | 'maul' | 'kick' | 'tackle' | 'zone' | 'annotation'
-export type Tool = 'select' | 'arrow' | 'erase'
+export type Tool = 'select' | 'arrow' | 'erase' | 'zone'
 
 // ─── Basic Structures ────────────────────────────────────────────────────────
 
@@ -36,6 +36,9 @@ export interface FieldEvent {
   label?: string
   color: string
   frameId: string
+  // Zone-specific (type === 'zone')
+  shapeType?: 'rect' | 'ellipse' | 'line' | 'path' | 'arc'
+  normPoints?: Position[]  // normalized coords for triangle / polygon / path / arc (3 pts for arc)
 }
 
 // ─── Frame ───────────────────────────────────────────────────────────────────
@@ -94,7 +97,7 @@ export interface UIState {
   activeFrameId: string | null
   selectedElementId: string | null  // player id or event id
   selectedElementType: 'player' | 'event' | null
-  selectedPlayerIds: string[]         // multi-selection rubber-band
+  selectedEntityIds: string[]          // multi-selection: player IDs + zone event IDs
   isPlaying: boolean
   playbackSpeed: 0.5 | 1 | 1.5 | 2
   playbackLoop: boolean
@@ -111,6 +114,8 @@ export interface UIState {
   currentFilePath: string | null
   lastSavedUpdatedAt: string | null
   lastSavedCombinationId: string | null
+  // Zone drawing config
+  zoneColor: string
 }
 
 // ─── Field geometry constants (SVG viewport) ─────────────────────────────────

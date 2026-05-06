@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   MousePointer2, ArrowRight, Eraser, BookOpen, Maximize2,
-  RotateCcw, RotateCw, Download, FolderOpen, Save, SaveAll,
+  RotateCcw, RotateCw, Download, FolderOpen, Save, SaveAll, Pencil,
 } from 'lucide-react'
 import type { Tool } from '../../types'
 import { useUIStore } from '../../store/uiStore'
@@ -11,8 +11,11 @@ import { saveFile, saveFileAs, openFile } from '../../utils/fileHelpers'
 const TOOLS: Array<{ id: Tool; icon: React.ElementType; label: string; shortcut?: string }> = [
   { id: 'select', icon: MousePointer2, label: 'Sélection', shortcut: 'V' },
   { id: 'arrow',  icon: ArrowRight,    label: 'Flèche',    shortcut: 'A' },
+  { id: 'zone',   icon: Pencil,        label: 'Zone',      shortcut: 'Z' },
   { id: 'erase',  icon: Eraser,        label: 'Effacer',   shortcut: 'E' },
 ]
+
+const ZONE_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#eab308', '#f97316', '#a855f7', '#ffffff']
 
 function ToolButton({ tool, isActive, onClick }: {
   tool: typeof TOOLS[0]; isActive: boolean; onClick: () => void
@@ -156,7 +159,8 @@ function FileActions() {
 // ─── Main Toolbar ─────────────────────────────────────────────────────────────
 
 export default function MainToolbar() {
-  const { activeTool, setActiveTool, toggleLibrary, togglePresentationMode, toggleExportModal } = useUIStore()
+  const { activeTool, setActiveTool, toggleLibrary, togglePresentationMode, toggleExportModal,
+          zoneColor, setZoneColor } = useUIStore()
   const { undo, redo, past, future } = useTacticalStore()
 
   return (
@@ -189,6 +193,25 @@ export default function MainToolbar() {
           />
         ))}
       </div>
+
+      {/* Zone options — visible uniquement quand l'outil zone est actif */}
+      {activeTool === 'zone' && (
+        <div className="flex items-center gap-1.5 px-3 border-l border-white/10">
+          {ZONE_COLORS.map(c => (
+            <button
+              key={c}
+              onClick={() => setZoneColor(c)}
+              title={c}
+              className="w-4 h-4 rounded-full transition-transform hover:scale-125 flex-shrink-0"
+              style={{
+                background: c,
+                outline: zoneColor === c ? '2px solid white' : '2px solid transparent',
+                outlineOffset: '1px',
+              }}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Spacer */}
       <div className="flex-1" />
