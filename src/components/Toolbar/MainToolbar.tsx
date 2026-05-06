@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
-  MousePointer2, ArrowRight, Eraser, BookOpen, Maximize2,
-  RotateCcw, RotateCw, Download, FolderOpen, Save, SaveAll, Pencil,
+  MousePointer2, Eraser, BookOpen, Maximize2,
+  RotateCcw, RotateCw, Download, FolderOpen, Save, SaveAll, Pencil, Square, Circle,
 } from 'lucide-react'
 import type { Tool } from '../../types'
 import { useUIStore } from '../../store/uiStore'
@@ -10,9 +10,14 @@ import { saveFile, saveFileAs, openFile } from '../../utils/fileHelpers'
 
 const TOOLS: Array<{ id: Tool; icon: React.ElementType; label: string; shortcut?: string }> = [
   { id: 'select', icon: MousePointer2, label: 'Sélection', shortcut: 'V' },
-  { id: 'arrow',  icon: ArrowRight,    label: 'Flèche',    shortcut: 'A' },
   { id: 'zone',   icon: Pencil,        label: 'Zone',      shortcut: 'Z' },
   { id: 'erase',  icon: Eraser,        label: 'Effacer',   shortcut: 'E' },
+]
+
+const ZONE_SHAPES: Array<{ id: 'freehand' | 'rect' | 'ellipse'; icon: React.ElementType; label: string }> = [
+  { id: 'freehand', icon: Pencil,  label: 'Dessin libre' },
+  { id: 'rect',     icon: Square,  label: 'Rectangle'    },
+  { id: 'ellipse',  icon: Circle,  label: 'Ellipse'      },
 ]
 
 const ZONE_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#eab308', '#f97316', '#a855f7', '#ffffff']
@@ -53,7 +58,7 @@ function AGRLogo() {
         <p className="text-white font-bold text-sm leading-tight" style={{ fontFamily: 'Rajdhani, sans-serif' }}>
           Tactical Board
         </p>
-        <p className="text-gray-500 text-xs leading-tight">v1.10</p>
+        <p className="text-gray-500 text-xs leading-tight">v1.11</p>
       </div>
     </div>
   )
@@ -160,7 +165,7 @@ function FileActions() {
 
 export default function MainToolbar() {
   const { activeTool, setActiveTool, toggleLibrary, togglePresentationMode, toggleExportModal,
-          zoneColor, setZoneColor } = useUIStore()
+          zoneColor, setZoneColor, zoneShape, setZoneShape } = useUIStore()
   const { undo, redo, past, future } = useTacticalStore()
 
   return (
@@ -196,20 +201,45 @@ export default function MainToolbar() {
 
       {/* Zone options — visible uniquement quand l'outil zone est actif */}
       {activeTool === 'zone' && (
-        <div className="flex items-center gap-1.5 px-3 border-l border-white/10">
-          {ZONE_COLORS.map(c => (
-            <button
-              key={c}
-              onClick={() => setZoneColor(c)}
-              title={c}
-              className="w-4 h-4 rounded-full transition-transform hover:scale-125 flex-shrink-0"
-              style={{
-                background: c,
-                outline: zoneColor === c ? '2px solid white' : '2px solid transparent',
-                outlineOffset: '1px',
-              }}
-            />
-          ))}
+        <div className="flex items-center gap-3 px-3 border-l border-white/10">
+          {/* Shape picker */}
+          <div className="flex items-center gap-0.5">
+            {ZONE_SHAPES.map(s => {
+              const Icon = s.icon
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => setZoneShape(s.id)}
+                  title={s.label}
+                  className={`p-1.5 rounded transition-all duration-150 ${
+                    zoneShape === s.id
+                      ? 'bg-red-600 text-white'
+                      : 'text-gray-400 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <Icon size={14} />
+                </button>
+              )
+            })}
+          </div>
+          {/* Separator */}
+          <div className="w-px h-4 bg-white/10" />
+          {/* Color picker */}
+          <div className="flex items-center gap-1.5">
+            {ZONE_COLORS.map(c => (
+              <button
+                key={c}
+                onClick={() => setZoneColor(c)}
+                title={c}
+                className="w-4 h-4 rounded-full transition-transform hover:scale-125 flex-shrink-0"
+                style={{
+                  background: c,
+                  outline: zoneColor === c ? '2px solid white' : '2px solid transparent',
+                  outlineOffset: '1px',
+                }}
+              />
+            ))}
+          </div>
         </div>
       )}
 

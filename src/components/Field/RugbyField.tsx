@@ -363,7 +363,7 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
       return c?.hiddenPlayerIds ?? EMPTY_HIDDEN
     })
     const {
-      isPlaying, setZoom, zoom, activeTool,
+      isPlaying, setZoom, zoom, activeTool, zoneShape,
       livePositions, liveBallPosition,
       selectedEntityIds, isBallSelected, setBallSelected,
     } = useUIStore()
@@ -409,13 +409,14 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
     const rubberBandRef     = useRef<{ startSvgX: number; startSvgY: number } | null>(null)
     const rubberBandRectRef = useRef<SVGRectElement>(null)
 
-    // ── Arrow drawing state ───────────────────────────────────────────────────
-    const arrowDrawing    = useRef<{ fromNorm: Position; fromSvgX: number; fromSvgY: number } | null>(null)
-    const previewArrowRef = useRef<SVGLineElement>(null)
-
     // ── Zone drawing state ────────────────────────────────────────────────────
     const zoneDrawingRef    = useRef<{ svgPoints: { x: number; y: number }[] } | null>(null)
     const zonePolylineRef   = useRef<SVGPolylineElement>(null)
+
+    // ── Shape drawing state (rect / ellipse click-drag) ───────────────────────
+    const shapeDrawingRef   = useRef<{ startSvgX: number; startSvgY: number; mode: 'rect' | 'ellipse'; color: string } | null>(null)
+    const previewRectRef    = useRef<SVGRectElement>(null)
+    const previewEllipseRef = useRef<SVGEllipseElement>(null)
 
     // Stable refs so closure-heavy callbacks can read current render values
     const visiblePlayersRef = useRef<Player[]>([])
@@ -448,33 +449,47 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
         return
       }
 
-      // ── Mode dessin de flèche ──────────────────────────────────────────────
-      if (activeTool === 'arrow') {
-        arrowDrawing.current = { fromNorm: svgToNorm(svgX, svgY), fromSvgX: svgX, fromSvgY: svgY }
-        if (previewArrowRef.current) {
-          previewArrowRef.current.setAttribute('visibility', 'visible')
-          previewArrowRef.current.setAttribute('x1', String(svgX))
-          previewArrowRef.current.setAttribute('y1', String(svgY))
-          previewArrowRef.current.setAttribute('x2', String(svgX))
-          previewArrowRef.current.setAttribute('y2', String(svgY))
-        }
-        ;(e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId)
-        return
-      }
-
-      // ── Dessin de zone ─────────────────────────────────────────────────────
+      // ── Dessin de zone / forme ─────────────────────────────────────────────
       if (activeTool === 'zone') {
         const onPlayer = (e.target as Element).closest('[data-player-id]')
         const onBall   = (e.target as Element).closest('[data-ball-token]')
-        if (!onPlayer && !onBall) {
+        if (onPlayer || onBall) return
+
+        if (zoneShape === 'rect' || zoneShape === 'ellipse') {
+          // Click-drag shape drawing
+          const color = useUIStore.getState().zoneColor
+          shapeDrawingRef.current = { startSvgX: svgX, startSvgY: svgY, mode: zoneShape, color }
+          if (zoneShape === 'rect') {
+            const el = previewRectRef.current
+            if (el) {
+              el.setAttribute('x', String(svgX))
+              el.setAttribute('y', String(svgY))
+              el.setAttribute('width', '0')
+              el.setAttribute('height', '0')
+              el.setAttribute('stroke', color)
+              el.setAttribute('visibility', 'visible')
+            }
+          } else {
+            const el = previewEllipseRef.current
+            if (el) {
+              el.setAttribute('cx', String(svgX))
+              el.setAttribute('cy', String(svgY))
+              el.setAttribute('rx', '0')
+              el.setAttribute('ry', '0')
+              el.setAttribute('stroke', color)
+              el.setAttribute('visibility', 'visible')
+            }
+          }
+        } else {
+          // Freehand drawing
           zoneDrawingRef.current = { svgPoints: [{ x: svgX, y: svgY }] }
           const pv = zonePolylineRef.current
           if (pv) {
             pv.setAttribute('points', `${svgX},${svgY}`)
             pv.setAttribute('visibility', 'visible')
           }
-          ;(e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId)
         }
+        ;(e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId)
         return
       }
 
@@ -674,7 +689,7 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
         rbEl.setAttribute('visibility', 'visible')
       }
       ;(e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId)
-    }, [isPlaying, activeTool, clientToSVG, svgToNorm, frame, prevFrame, normToSVG,
+    }, [isPlaying, activeTool, zoneShape, clientToSVG, svgToNorm, frame, prevFrame, normToSVG,
         setBallPosition, setBallWaypoint, removePlayerFromField, removeEvent, _pushHistory,
         livePositions, svgEl, togglePlayerHidden])
 
@@ -683,10 +698,25 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
     const onPointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
       const { svgX, svgY } = clientToSVG(e.clientX, e.clientY)
 
-      // Arrow preview
-      if (arrowDrawing.current) {
-        previewArrowRef.current?.setAttribute('x2', String(svgX))
-        previewArrowRef.current?.setAttribute('y2', String(svgY))
+      // Shape drawing preview (rect / ellipse)
+      if (shapeDrawingRef.current) {
+        const { startSvgX, startSvgY, mode } = shapeDrawingRef.current
+        const x = Math.min(svgX, startSvgX), y = Math.min(svgY, startSvgY)
+        const w = Math.abs(svgX - startSvgX),  h = Math.abs(svgY - startSvgY)
+        if (mode === 'rect') {
+          const el = previewRectRef.current
+          if (el) {
+            el.setAttribute('x', String(x));  el.setAttribute('y', String(y))
+            el.setAttribute('width', String(w)); el.setAttribute('height', String(h))
+          }
+        } else {
+          const el = previewEllipseRef.current
+          if (el) {
+            el.setAttribute('cx', String((svgX + startSvgX) / 2))
+            el.setAttribute('cy', String((svgY + startSvgY) / 2))
+            el.setAttribute('rx', String(w / 2)); el.setAttribute('ry', String(h / 2))
+          }
+        }
         return
       }
 
@@ -775,7 +805,25 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
       const { svgX, svgY } = clientToSVG(e.clientX, e.clientY)
       ;(e.currentTarget as SVGSVGElement).releasePointerCapture(e.pointerId)
 
-      // Zone commit
+      // Shape drawing commit (rect / ellipse)
+      if (shapeDrawingRef.current) {
+        const { startSvgX, startSvgY, mode, color } = shapeDrawingRef.current
+        shapeDrawingRef.current = null
+        previewRectRef.current?.setAttribute('visibility', 'hidden')
+        previewEllipseRef.current?.setAttribute('visibility', 'hidden')
+
+        const minX = Math.min(svgX, startSvgX), maxX = Math.max(svgX, startSvgX)
+        const minY = Math.min(svgY, startSvgY), maxY = Math.max(svgY, startSvgY)
+        if (maxX - minX < 10 && maxY - minY < 10) return
+
+        addEvent(frame.id, {
+          id: crypto.randomUUID(), type: 'zone', shapeType: mode,
+          from: svgToNorm(minX, minY), to: svgToNorm(maxX, maxY), color,
+        })
+        return
+      }
+
+      // Freehand zone commit
       if (zoneDrawingRef.current) {
         const { svgPoints } = zoneDrawingRef.current
         zoneDrawingRef.current = null
@@ -783,21 +831,17 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
 
         if (svgPoints.length < 3) return
         const result = analyzeShape(svgPoints)
-        const { shapeType, minX, minY, maxX, maxY } = result
+        const { minX, minY, maxX, maxY } = result
+        // Freehand only produces line, arc, path — reclassify rect/ellipse to path
+        const shapeType = (result.shapeType === 'rect' || result.shapeType === 'ellipse')
+          ? 'path' : result.shapeType
 
         if (maxX - minX < 10 && maxY - minY < 10) return  // too small
 
         const { zoneColor } = useUIStore.getState()
         const id = crypto.randomUUID()
 
-        if (shapeType === 'rect' || shapeType === 'ellipse') {
-          addEvent(frame.id, {
-            id, type: 'zone', shapeType,
-            from: svgToNorm(minX, minY),
-            to:   svgToNorm(maxX, maxY),
-            color: zoneColor,
-          })
-        } else if (shapeType === 'line') {
+        if (shapeType === 'line') {
           const [p0, p1] = result.points
           addEvent(frame.id, {
             id, type: 'zone', shapeType: 'line',
@@ -816,24 +860,6 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
             color: zoneColor,
           })
         }
-        return
-      }
-
-      // Arrow commit
-      if (arrowDrawing.current) {
-        const { fromNorm, fromSvgX, fromSvgY } = arrowDrawing.current
-        arrowDrawing.current = null
-        if (previewArrowRef.current) previewArrowRef.current.setAttribute('visibility', 'hidden')
-        const dSq = (svgX - fromSvgX) ** 2 + (svgY - fromSvgY) ** 2
-        if (dSq < 100) return
-        const toNorm = svgToNorm(svgX, svgY)
-        addEvent(frame.id, {
-          id: crypto.randomUUID(),
-          type: 'run',
-          from: fromNorm,
-          to: toNorm,
-          color: '#ffffff',
-        })
         return
       }
 
@@ -1009,7 +1035,7 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
     // ── ViewBox & curseur ──────────────────────────────────────────────────────
 
     const viewBox = isHalf ? H.viewBox : '-130 -5 1270 720'
-    const fieldCursor = activeTool === 'erase' || activeTool === 'arrow' || activeTool === 'zone'
+    const fieldCursor = activeTool === 'erase' || activeTool === 'zone'
       ? 'crosshair'
       : 'default'
 
@@ -1072,7 +1098,7 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
           )
         })}
 
-        {/* ── Flèches dessinées ────────────────────────────────────────────── */}
+        {/* ── Flèches dessinées (run events existants) ─────────────────────── */}
         {frame.events.filter(ev => ev.type !== 'zone' && ev.from && ev.to).map(ev => {
           const { cx: fx, cy: fy } = normToSVG(ev.from!)
           const { cx: tx, cy: ty } = normToSVG(ev.to!)
@@ -1087,16 +1113,6 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
             />
           )
         })}
-
-        {/* Flèche en cours de dessin (preview) */}
-        <line
-          ref={previewArrowRef}
-          x1={0} y1={0} x2={0} y2={0}
-          stroke="rgba(255,255,255,0.75)" strokeWidth={2.5}
-          markerEnd="url(#arrowhead)"
-          visibility="hidden"
-          style={{ pointerEvents: 'none' }}
-        />
 
         {/* ── Ghost trails ─────────────────────────────────────────────────── */}
         {trails.map(t => {
@@ -1217,6 +1233,24 @@ const RugbyField = forwardRef<SVGSVGElement, RugbyFieldProps>(
           strokeDasharray="5 3"
           strokeLinecap="round"
           strokeLinejoin="round"
+          visibility="hidden"
+          style={{ pointerEvents: 'none' }}
+        />
+
+        {/* ── Prévisualisation rect / ellipse ──────────────────────────────── */}
+        <rect
+          ref={previewRectRef}
+          x={0} y={0} width={0} height={0}
+          fill="rgba(255,255,255,0.07)"
+          stroke="white" strokeWidth={2} strokeDasharray="5 3"
+          visibility="hidden"
+          style={{ pointerEvents: 'none' }}
+        />
+        <ellipse
+          ref={previewEllipseRef}
+          cx={0} cy={0} rx={0} ry={0}
+          fill="rgba(255,255,255,0.07)"
+          stroke="white" strokeWidth={2} strokeDasharray="5 3"
           visibility="hidden"
           style={{ pointerEvents: 'none' }}
         />

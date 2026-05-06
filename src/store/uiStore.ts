@@ -24,6 +24,7 @@ interface UIActions {
   setFileSaveState: (path: string, updatedAt: string, combinationId: string) => void
   clearFileSaveState: () => void
   setZoneColor: (color: string) => void
+  setZoneShape: (shape: 'freehand' | 'rect' | 'ellipse') => void
 }
 
 export const useUIStore = create<UIState & UIActions & { isBallSelected: boolean }>((set) => ({
@@ -49,6 +50,7 @@ export const useUIStore = create<UIState & UIActions & { isBallSelected: boolean
   lastSavedUpdatedAt: null,
   lastSavedCombinationId: null,
   zoneColor: '#3b82f6',
+  zoneShape: 'freehand' as const,
 
   setActiveTool: (tool) => set({ activeTool: tool, selectedElementId: null, selectedElementType: null, selectedEntityIds: [], isBallSelected: false }),
   setActiveFrameId: (id) => set({ activeFrameId: id }),
@@ -72,4 +74,5 @@ export const useUIStore = create<UIState & UIActions & { isBallSelected: boolean
   setFileSaveState: (path, updatedAt, combinationId) => set({ currentFilePath: path, lastSavedUpdatedAt: updatedAt, lastSavedCombinationId: combinationId }),
   clearFileSaveState: () => set({ currentFilePath: null, lastSavedUpdatedAt: null, lastSavedCombinationId: null }),
   setZoneColor: (color) => set({ zoneColor: color }),
+  setZoneShape: (shape) => set({ zoneShape: shape }),
 }))

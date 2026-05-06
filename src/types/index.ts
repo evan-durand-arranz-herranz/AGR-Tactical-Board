@@ -4,7 +4,7 @@ export type Team = 'AGR' | 'opponent'
 export type Phase = 'scrum' | 'lineout' | 'kickoff' | 'open' | 'defense'
 export type Category = 'attack' | 'defense' | 'kick' | 'set_piece'
 export type EventType = 'pass' | 'run' | 'ruck' | 'maul' | 'kick' | 'tackle' | 'zone' | 'annotation'
-export type Tool = 'select' | 'arrow' | 'erase' | 'zone'
+export type Tool = 'select' | 'erase' | 'zone'
 
 // ─── Basic Structures ────────────────────────────────────────────────────────
 
@@ -116,6 +116,7 @@ export interface UIState {
   lastSavedCombinationId: string | null
   // Zone drawing config
   zoneColor: string
+  zoneShape: 'freehand' | 'rect' | 'ellipse'
 }
 
 // ─── Field geometry constants (SVG viewport) ─────────────────────────────────

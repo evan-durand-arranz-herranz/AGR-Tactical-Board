@@ -6,7 +6,6 @@ import type { Tool } from '../types'
 
 const TOOL_KEYS: Record<string, Tool> = {
   v: 'select',
-  a: 'arrow',
   z: 'zone',
   e: 'erase',
 }
