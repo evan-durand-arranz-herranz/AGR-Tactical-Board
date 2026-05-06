@@ -138,14 +138,37 @@ export function analyzeShape(raw: Point[]): ShapeResult {
       pts = pts.slice(0, -1)
     }
     if (pts.length === 4) {
-      if (isRectLike(pts)) return { shapeType: 'rect', ...bbox, points: pts }
-      break  // 4 corners but not rect-like — no point trying larger eps
+      // Guard: 4 equidistant points on a circle also form right angles → isRectLike passes.
+      // Only classify as rect when the raw stroke has actual sharp corners.
+      // Use a robust corner detector (large window, strict threshold) so jitter on a
+      // circle doesn't create false corners.
+      if (isRectLike(pts) && hasRealSharpCorners(raw)) {
+        return { shapeType: 'rect', ...bbox, points: pts }
+      }
+      break  // 4 corners but didn't pass rect — no point trying larger eps
     }
   }
 
   // 2. Ellipse: smooth closed curve with consistent radii
   if (isEllipseLike(raw)) {
     return { shapeType: 'ellipse', ...bbox, points: rdp(raw, 20) }
+  }
+
+  // 2b. Kasa-based ellipse fallback: for heavily jittered circles where detectCorners
+  //     creates false corners (breaking isEllipseLike) but the Kasa fit is tight.
+  //     Only fires when the stroke has no real sharp corners (i.e., not a rect).
+  if (!hasRealSharpCorners(raw)) {
+    const kasaPts = evenlySpaced(raw, 20)
+    if (kasaPts.length >= 6) {
+      const circ = fitCircle(kasaPts)
+      if (circ && circ.r >= 10 && circ.r <= 3000) {
+        const meanErr = raw.reduce((s, p) =>
+          s + Math.abs(Math.hypot(p.x - circ.cx, p.y - circ.cy) - circ.r), 0) / raw.length
+        if (meanErr / circ.r < 0.18) {
+          return { shapeType: 'ellipse', ...bbox, points: rdp(raw, 20) }
+        }
+      }
+    }
   }
 
   // 3. Fallback: closed freehand path
@@ -246,7 +269,41 @@ function scoreEllipse(pts: Point[]): number {
   return 1 - (cv / 0.45)
 }
 
-// ─── Corner detector ──────────────────────────────────────────────────────────
+// ─── Corner detectors ─────────────────────────────────────────────────────────
+
+// Robust check used to guard rect detection: requires REAL sharp corners (≥ 3 of 4 rect corners).
+// Uses a wider window and stricter threshold than detectCorners to be immune to stroke jitter,
+// so a jittered freehand circle with false local direction-changes is not mistaken for a rect.
+function hasRealSharpCorners(raw: Point[]): boolean {
+  const sampled = downsample(raw, 12)
+  const n = sampled.length
+  if (n < 7) return false
+
+  // n/8 caps each WINDOW span at ~45° of arc on a circle, preventing small circles
+  // (where n/5 would span ~72°–90°) from generating false 81°-threshold corners.
+  const WINDOW    = Math.max(2, Math.min(6, Math.floor(n / 8)))
+  const THRESHOLD = Math.PI * 0.45   // ~81° — immune to circle jitter, catches rect/L-shape corners
+  const MIN_GAP   = 25
+
+  let cornerCount = 0
+  let lastCorner  = { x: -Infinity, y: -Infinity }
+
+  for (let i = WINDOW; i < n - WINDOW; i++) {
+    const dx1 = sampled[i].x - sampled[i - WINDOW].x
+    const dy1 = sampled[i].y - sampled[i - WINDOW].y
+    const dx2 = sampled[i + WINDOW].x - sampled[i].x
+    const dy2 = sampled[i + WINDOW].y - sampled[i].y
+    const l1 = Math.hypot(dx1, dy1), l2 = Math.hypot(dx2, dy2)
+    if (l1 < 1 || l2 < 1) continue
+    const cos = Math.max(-1, Math.min(1, (dx1 * dx2 + dy1 * dy2) / (l1 * l2)))
+    if (Math.acos(cos) > THRESHOLD &&
+        Math.hypot(sampled[i].x - lastCorner.x, sampled[i].y - lastCorner.y) > MIN_GAP) {
+      cornerCount++
+      lastCorner = sampled[i]
+    }
+  }
+  return cornerCount >= 2   // at least 2 real sharp corners → likely a rect, not a circle
+}
 
 function detectCorners(raw: Point[]): Point[] {
   const sampled = downsample(raw, 12)

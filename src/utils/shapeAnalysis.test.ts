@@ -175,6 +175,55 @@ describe('analyzeShape — nearly-complete circle → ellipse', () => {
   })
 })
 
+describe('analyzeShape — circle robustness (main regression)', () => {
+  it('closed smooth circle is NOT classified as rect (4 equidistant points form right angles)', () => {
+    // This is the main regression: RDP at eps=40 gives 4 equidistant circle points
+    // that satisfy isRectLike — must be guarded by !isEllipseLike
+    const pts = circle(400, 350, 120, 64)  // full closed circle, 65 points
+    const r = analyzeShape(pts)
+    expect(r.shapeType).toBe('ellipse')
+    expect(r.shapeType).not.toBe('rect')
+  })
+
+  it('closed jittered circle (amplitude 8px) is detected as ellipse', () => {
+    const pts = jitteredCircle(400, 350, 130, 48, 8)
+    const r = analyzeShape(pts)
+    expect(r.shapeType).toBe('ellipse')
+  })
+
+  it('closed jittered circle (amplitude 12px, larger jitter) is detected as ellipse', () => {
+    const pts = jitteredCircle(300, 300, 100, 48, 12)
+    const r = analyzeShape(pts)
+    expect(r.shapeType).toBe('ellipse')
+  })
+
+  it('small closed circle is detected as ellipse', () => {
+    const pts = circle(200, 200, 40, 32)
+    const r = analyzeShape(pts)
+    expect(r.shapeType).toBe('ellipse')
+  })
+
+  it('large closed circle is detected as ellipse', () => {
+    const pts = circle(500, 350, 250, 96)
+    const r = analyzeShape(pts)
+    expect(r.shapeType).toBe('ellipse')
+  })
+
+  it('nearly-closed circle (60px gap, within soft-close) is detected as ellipse', () => {
+    // User draws 330° of a circle and stops 60px short of closing
+    const allPts = circle(400, 350, 130, 60, 0, (330 / 180) * Math.PI)
+    const r = analyzeShape(allPts)
+    expect(r.shapeType).toBe('ellipse')
+  })
+
+  it('circle with open gap > 270° is detected as ellipse (not arc)', () => {
+    const allPts = circle(400, 350, 120, 60, 0, (280 / 180) * Math.PI)
+    const r = analyzeShape(allPts)
+    expect(r.shapeType).toBe('ellipse')
+    expect(r.shapeType).not.toBe('arc')
+  })
+})
+
 describe('analyzeShape — soft close rect', () => {
   it('detects unclosed rectangle with a 15% gap as rect', () => {
     // Draw 3.5 sides of a 200×160 rectangle (leave a 30px gap, diagonal ≈ 256)
