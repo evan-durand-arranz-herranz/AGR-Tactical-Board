@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useRef } from 'react'
 import { useTacticalStore } from './store/tacticalStore'
 import { useUIStore } from './store/uiStore'
-import type { Combination } from './types'
+import type { Combination, Player, Position } from './types'
 import { useAnimation } from './hooks/useAnimation'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useDragToPlace } from './hooks/useDragToPlace'
@@ -11,7 +11,6 @@ import Timeline from './components/Timeline/Timeline'
 import PlayerPool from './components/Panels/PlayerPool'
 import LibraryPanel from './components/Panels/LibraryPanel'
 import ExportModal from './components/Modals/ExportModal'
-import type { Player, Position } from './types'
 
 // ─── Barre de frame + toggle vue ─────────────────────────────────────────────
 
@@ -104,20 +103,7 @@ function GhostPlayer({ ghostRef }: { ghostRef: React.RefObject<HTMLDivElement | 
 
 // ─── Layout partagé (normal + présentation) ───────────────────────────────────
 
-function FieldLayout({
-  presentationMode,
-  children,
-}: {
-  presentationMode?: boolean
-  children: React.ReactNode
-}) {
-  if (presentationMode) {
-    return (
-      <div className="flex-1 flex overflow-hidden">
-        {children}
-      </div>
-    )
-  }
+function FieldLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex-1 flex overflow-hidden">
       {children}
@@ -167,7 +153,7 @@ export default function App() {
     startBallDrag(e.clientX, e.clientY)
   }, [startBallDrag])
 
-  const handleBenchFromPool = useCallback((player: import('./types').Player) => {
+  const handleBenchFromPool = useCallback((player: Player) => {
     togglePlayerHidden(player.id)
   }, [togglePlayerHidden])
 
@@ -213,7 +199,7 @@ export default function App() {
   if (isPresentationMode) {
     return (
       <div className="w-full h-full flex flex-col" style={{ background: '#0a0d14', overflow: 'hidden', position: 'relative' }}>
-        <FieldLayout presentationMode>
+        <FieldLayout>
           {/* Pool aussi disponible en présentation */}
           <PlayerPool combo={combo} frame={activeFrame} onStartDrag={handlePoolDragStart} onStartBallDrag={handlePoolBallDragStart} onBench={handleBenchFromPool} />
 

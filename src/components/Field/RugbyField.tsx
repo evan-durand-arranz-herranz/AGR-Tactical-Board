@@ -1,14 +1,14 @@
 import React, { forwardRef, useRef, useCallback } from 'react'
 import { FIELD } from '../../types'
 import type { Frame, Player, FieldView, Position, FieldEvent } from '../../types'
-
-// Stable reference to avoid infinite re-renders when hiddenPlayerIds is undefined
-const EMPTY_HIDDEN: string[] = []
 import { clampPosition, fromSVG } from '../../utils/fieldGeometry'
 import { analyzeShape, svgArcPath } from '../../utils/shapeAnalysis'
 import { useTacticalStore } from '../../store/tacticalStore'
 import { useUIStore } from '../../store/uiStore'
 import PlayerToken from './PlayerToken'
+
+// Stable reference to avoid infinite re-renders when hiddenPlayerIds is undefined
+const EMPTY_HIDDEN: string[] = []
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TERRAIN COMPLET (paysage) — 1000 × 700 SVG units

@@ -2,17 +2,6 @@ import { FIELD } from '../types'
 import type { Position } from '../types'
 
 /**
- * Convert a normalized position (0–100% of field) to SVG coordinates.
- * The SVG viewport is FIELD.WIDTH × FIELD.HEIGHT user units.
- */
-export function toSVG(pos: Position): { svgX: number; svgY: number } {
-  return {
-    svgX: (pos.x / 100) * FIELD.WIDTH,
-    svgY: (pos.y / 100) * FIELD.HEIGHT,
-  }
-}
-
-/**
  * Convert SVG coordinates back to normalized field position.
  */
 export function fromSVG(svgX: number, svgY: number): Position {

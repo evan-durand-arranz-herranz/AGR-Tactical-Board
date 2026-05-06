@@ -70,49 +70,6 @@ const OPEN_PLAY_OPP: Record<number, Position> = {
   15: pos(40, 50),
 }
 
-// ─── Bench positions (off-field right side) ───────────────────────────────────
-
-const BENCH_AGR: Record<number, Position> = {
-  16: pos(105, 10),
-  17: pos(105, 20),
-  18: pos(105, 30),
-  19: pos(105, 40),
-  20: pos(105, 50),
-  21: pos(105, 60),
-  22: pos(105, 70),
-  23: pos(105, 80),
-}
-
-const BENCH_OPP: Record<number, Position> = {
-  16: pos(-5, 10),
-  17: pos(-5, 20),
-  18: pos(-5, 30),
-  19: pos(-5, 40),
-  20: pos(-5, 50),
-  21: pos(-5, 60),
-  22: pos(-5, 70),
-  23: pos(-5, 80),
-}
-
-// ─── Build default positions record ──────────────────────────────────────────
-
-function buildDefaultPositions(players: Player[]): Record<string, Position> {
-  const result: Record<string, Position> = {}
-  for (const p of players) {
-    const num = p.number
-    if (p.team === 'AGR') {
-      result[p.id] = p.isOnBench
-        ? (BENCH_AGR[num] ?? pos(105, 50))
-        : (OPEN_PLAY_AGR[num] ?? pos(40, 50))
-    } else {
-      result[p.id] = p.isOnBench
-        ? (BENCH_OPP[num] ?? pos(-5, 50))
-        : (OPEN_PLAY_OPP[num] ?? pos(60, 50))
-    }
-  }
-  return result
-}
-
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export function createDefaultCombination(name = 'Nouvelle combinaison'): Combination {

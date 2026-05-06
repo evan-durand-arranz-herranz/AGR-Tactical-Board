@@ -403,19 +403,6 @@ function fitCircle(pts: Point[]): { cx: number; cy: number; r: number } | null {
   return { cx: uc + mx, cy: vc + my, r }
 }
 
-// Total angle swept by the stroke around center (for nearly-complete circle detection)
-function computeSweptAngle(pts: Point[], cx: number, cy: number): number {
-  let total = 0
-  for (let i = 1; i < pts.length; i++) {
-    const a0 = Math.atan2(pts[i - 1].y - cy, pts[i - 1].x - cx)
-    const a1 = Math.atan2(pts[i].y - cy, pts[i].x - cx)
-    // Signed angle in [-π, π]
-    let da = ((a1 - a0 + Math.PI) % (2 * Math.PI)) - Math.PI
-    total += da
-  }
-  return Math.abs(total)
-}
-
 // ─── SVG arc path — exported for rendering ────────────────────────────────────
 
 export function svgArcPath(p0: Point, pm: Point, p1: Point): string {
